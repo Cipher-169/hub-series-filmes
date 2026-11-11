@@ -1,105 +1,73 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#090c16">
-  <meta name="description" content="Seu espaço pessoal para organizar filmes e séries.">
-  <title>Hub de Filmes & Séries</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700;9..144,800&family=Instrument+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/style.css">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#090c16">
+<meta name="description" content="Meu espaço pessoal para filmes e séries — Clpher">
+<title>Hub de Filmes &amp; Séries — Clpher</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,600;0,9..144,800;1,9..144,500&family=Instrument+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
 </head>
 <body>
-  <header class="hero" id="inicio">
-    <div class="topbar">
-      <a class="brand" href="#inicio">meu<span>hub</span><i>.</i></a>
-      <div class="top-actions">
-        <span class="profile-chip"><span class="status-dot"></span> Meu espaço pessoal</span>
-        <button class="icon-button" id="search-focus" aria-label="Ir para busca">⌕</button>
-      </div>
+
+<!-- ============ HERO ============ -->
+<header class="hero" id="hero">
+  <div class="top">
+    <div class="brand">Hub de <i>filmes</i> &amp; <i>séries</i><span class="project-version" id="project-version">v—</span></div>
+    <div class="who">
+      <span class="profile-chip" aria-label="Perfil Trakt fixo">Trakt: <strong>Clpher</strong></span>
+      <button id="btn-sync" type="button">Sincronizar Trakt</button>
+      <button id="btn-login" type="button">Entrar com Google</button>
     </div>
-    <div class="hero-content">
-      <span class="eyebrow">FILMES · SÉRIES · MINHA HISTÓRIA</span>
-      <h1>Histórias que<br><em>ficam com você.</em></h1>
-      <p>Seu espaço para acompanhar, organizar e avaliar tudo o que assiste.</p>
-      <button class="primary-button" data-jump="catalogo">Explorar meu catálogo <span>↗</span></button>
-    </div>
-    <div class="hero-bottom"><span>SEU UNIVERSO AUDIOVISUAL</span><span>01 — HUB PESSOAL</span></div>
-  </header>
+  </div>
+  <div class="hero-in" id="heroin">
+    <h1>Carregando…</h1>
+  </div>
+</header>
 
-  <main class="page-shell">
-    <nav class="main-nav" aria-label="Navegação principal">
-      <button class="nav-tab active" data-view="inicio-view">Visão geral</button>
-      <button class="nav-tab" data-view="catalogo-view">Meu catálogo</button>
-      <button class="nav-tab" data-view="filmes-view">Filmes</button>
-      <button class="nav-tab" data-view="series-view">Séries</button>
-      <button class="nav-tab" data-view="estatisticas-view">Estatísticas</button>
-    </nav>
+<!-- ============ SHELL ============ -->
+<div class="wrap">
+  <p class="sync-status" id="sync-status" role="status">Catálogo público via Trakt; cache local por até 24 horas.</p>
+  <p class="meta" id="me"></p>
 
-    <section class="view active" id="inicio-view">
-      <div class="section-heading">
-        <div><span class="section-kicker">UM OLHAR SOBRE SUA JORNADA</span><h2>Seu universo</h2></div>
-        <span class="subtle">Uma prévia do que vem por aí</span>
-      </div>
-      <div class="overview-grid">
-        <article class="metric-card"><span>Na sua coleção</span><strong>—</strong><small>Filmes e séries</small></article>
-        <article class="metric-card"><span>Concluídos</span><strong>—</strong><small>Histórias finalizadas</small></article>
-        <article class="metric-card"><span>Assistindo</span><strong>—</strong><small>Em andamento</small></article>
-        <article class="metric-card accent-metric"><span>Sua nota média</span><strong>—<small>/100</small></strong><small>Avaliações pessoais</small></article>
-      </div>
+  <!-- Abas -->
+  <div class="tabs" role="tablist">
+    <button role="tab" aria-selected="true"  data-tab="agora">Agora</button>
+    <button role="tab" aria-selected="false" data-tab="filmes">Filmes</button>
+    <button role="tab" aria-selected="false" data-tab="series">Séries</button>
+    <button role="tab" aria-selected="false" data-tab="stats" id="stats-tab" class="hidden">Estatísticas</button>
+  </div>
 
-      <div class="feature-panel">
-        <div class="feature-copy"><span class="section-kicker">SEU PRÓXIMO CAPÍTULO</span><h3>O que vamos assistir?</h3><p>Adicione filmes e séries à sua lista, acompanhe seu progresso e registre suas impressões.</p><button class="text-button" data-jump="catalogo">Abrir catálogo <span>→</span></button></div>
-        <div class="feature-art" aria-hidden="true"><span class="art-orbit orbit-one"></span><span class="art-orbit orbit-two"></span><span class="art-symbol">✳</span><span class="art-caption">PLAY<br>YOUR WAY</span></div>
-      </div>
+  <!-- Barra de filtros (visível em Filmes/Séries) -->
+  <div class="bar hidden" id="filters">
+    <input id="search-query" type="search" placeholder="Filtrar por nome…" aria-label="Filtrar por nome">
+    <select id="filter-status" aria-label="Status">
+      <option value="">Todos os status</option>
+      <option value="watching">Assistindo</option>
+      <option value="completed">Concluídos</option>
+      <option value="plantowatch">Quero assistir</option>
+      <option value="dropped">Abandonados</option>
+    </select>
+    <select id="filter-year" aria-label="Ano"></select>
+    <select id="filter-limit" aria-label="Quantidade">
+      <option value="25">Top 25</option>
+      <option value="50">Top 50</option>
+      <option value="9999">Tudo</option>
+    </select>
+  </div>
 
-      <div class="section-heading spaced">
-        <div><span class="section-kicker">COMECE POR AQUI</span><h2>Seu catálogo</h2></div>
-        <button class="text-button" data-jump="catalogo">Ver tudo →</button>
-      </div>
-      <div class="empty-state"><span class="empty-icon">✦</span><h3>Seu catálogo começa aqui</h3><p>Esta é uma prévia da interface. Na próxima etapa vamos conectar o catálogo do Trakt e trazer filmes e séries reais.</p></div>
-    </section>
+  <!-- Área de conteúdo -->
+  <div id="view"></div>
+</div>
 
-    <section class="view" id="catalogo-view">
-      <div class="section-heading">
-        <div><span class="section-kicker">TUDO EM UM SÓ LUGAR</span><h2>Meu catálogo</h2></div>
-        <span class="subtle">Sua coleção pessoal</span>
-      </div>
-      <div class="catalog-toolbar">
-        <label class="search-box"><span>⌕</span><input id="catalog-search" type="search" placeholder="Buscar no meu catálogo..." autocomplete="off"></label>
-        <div class="filter-pills" id="type-filters">
-          <button class="filter-pill active" data-filter="todos">Tudo</button><button class="filter-pill" data-filter="filme">Filmes</button><button class="filter-pill" data-filter="serie">Séries</button>
-        </div>
-      </div>
-      <div class="status-row"><button class="status-chip active" data-status="todos">Todos</button><button class="status-chip" data-status="planejado">Quero assistir</button><button class="status-chip" data-status="assistindo">Assistindo</button><button class="status-chip" data-status="concluido">Concluídos</button></div>
-      <div class="empty-state compact"><span class="empty-icon">⌕</span><h3>Nenhum título por enquanto</h3><p>Quando conectarmos o Trakt, seus títulos aparecerão aqui.</p></div>
-      <div class="catalog-grid" id="catalog-grid"></div>
-    </section>
+<!-- ============ MODAL DE DETALHES ============ -->
+<dialog id="dlg"></dialog>
 
-    <section class="view" id="filmes-view">
-      <div class="section-heading"><div><span class="section-kicker">TELA GRANDE</span><h2>Meus filmes</h2></div></div>
-      <div class="empty-state"><span class="empty-icon">▱</span><h3>Seus filmes terão seu espaço</h3><p>Lista de desejos, filmes assistidos, notas e comentários em um só lugar.</p></div>
-    </section>
-
-    <section class="view" id="series-view">
-      <div class="section-heading"><div><span class="section-kicker">HISTÓRIAS EM CAPÍTULOS</span><h2>Minhas séries</h2></div></div>
-      <div class="empty-state"><span class="empty-icon">▤</span><h3>Suas séries, temporada por temporada</h3><p>Vamos acompanhar episódios individualmente e manter avaliações independentes para temporadas e séries completas.</p></div>
-    </section>
-
-    <section class="view" id="estatisticas-view">
-      <div class="section-heading"><div><span class="section-kicker">SUA JORNADA EM NÚMEROS</span><h2>Estatísticas</h2></div></div>
-      <div class="empty-state"><span class="empty-icon">↗</span><h3>Suas estatísticas serão construídas aqui</h3><p>Quantidade assistida, tempo de tela, distribuição das notas e muito mais.</p></div>
-    </section>
-
-    <footer class="footer"><a class="brand" href="#inicio">meu<span>hub</span><i>.</i></a><span>Um espaço pessoal para suas histórias.</span><span class="footer-version">VERSÃO INICIAL · 0.1</span></footer>
-  </main>
-
-  <dialog id="title-dialog" class="title-dialog">
-    <button class="dialog-close" id="dialog-close" aria-label="Fechar">×</button>
-    <div class="dialog-content"><span class="section-kicker">DETALHES DO TÍTULO</span><h2 id="dialog-title">Título</h2><p id="dialog-description">As informações do título aparecerão aqui.</p><div class="rating-preview"><span>Sua avaliação</span><strong>—<small>/100</small></strong><p>O sistema de notas de 0 a 100 será implementado na próxima etapa.</p></div></div>
-  </dialog>
-  <script src="js/app.js"></script>
+<!-- ============ SCRIPTS ============ -->
+<script src="js/hub.js"></script>
+<script type="module" src="js/firebase.js"></script>
 </body>
 </html>
