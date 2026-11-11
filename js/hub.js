@@ -5,7 +5,7 @@
    CONTROLE DE VERSÃO:
    Sempre que modificar este arquivo incremente HUB_VERSION em +1.
    ===================================================================== */
-const HUB_VERSION = 2;
+const HUB_VERSION = 5;
 window.HUB_VERSION = HUB_VERSION;
 document.getElementById("project-version").textContent = `v${HUB_VERSION}`;
 
@@ -603,6 +603,14 @@ document.addEventListener("click", e => {
     else if (!dateField.value) dateField.value = localDateISO();
     return;
   }
+  const copyBtn = e.target.closest("[data-copy]");
+  if (copyBtn) {
+    navigator.clipboard?.writeText(copyBtn.dataset.copy);
+    const orig = copyBtn.textContent;
+    copyBtn.textContent = "Copiado!";
+    setTimeout(() => { copyBtn.textContent = orig; }, 1800);
+    return;
+  }
   const card = e.target.closest("[data-id]");
   if (card && !$("dlg").contains(card)) openItem(card.dataset.id, card.dataset.type);
 });
@@ -614,7 +622,7 @@ $("dlg").addEventListener("click", e => { if (e.target === $("dlg")) $("dlg").cl
    ===================================================================== */
 
 async function loadCatalog({ sync = false } = {}) {
-  const username = window.TraktAuth?.OWNER || "Clpher";
+  const username = window.TraktAuth?.OWNER || "Cypher169";
   const statusEl = $("sync-status");
   statusEl.textContent = sync ? "Sincronizando com o Trakt…" : "Carregando catálogo…";
   $("btn-sync").disabled = true;
@@ -700,6 +708,40 @@ function loadFallbackMock() {
 }
 
 /* =====================================================================
+   PAINEL DE CONEXÃO COM TRAKT (gerenciado pela autenticação Google)
+   ===================================================================== */
+
+function updateTraktConnectionUI() {
+  const statusEl      = $("trakt-connection-status");
+  const btnConnect    = $("btn-trakt-connect");
+  const btnDisconnect = $("btn-trakt-disconnect");
+  if (!statusEl || !btnConnect || !btnDisconnect) return;
+
+  const isTraktAuth = window.TraktAuth?.isAuthenticated();
+
+  if (!fbUser) {
+    statusEl.textContent = "Entre com a conta Google proprietária para gerenciar a conexão com o Trakt.";
+    btnConnect.classList.remove("hidden");
+    btnConnect.disabled = true;
+    btnConnect.title = "Faça login com a conta Google primeiro";
+    btnDisconnect.classList.add("hidden");
+  } else {
+    if (isTraktAuth) {
+      statusEl.textContent = `Conectado como ${TraktAuth.OWNER || "Cypher169"}.`;
+      btnConnect.classList.add("hidden");
+      btnDisconnect.classList.remove("hidden");
+      btnDisconnect.disabled = false;
+    } else {
+      statusEl.textContent = "Nenhuma conta Trakt conectada.";
+      btnConnect.classList.remove("hidden");
+      btnConnect.disabled = false;
+      btnConnect.title = "Clique para autorizar sua conta Trakt";
+      btnDisconnect.classList.add("hidden");
+    }
+  }
+}
+
+/* =====================================================================
    INICIALIZAÇÃO DO APP
    ===================================================================== */
 
@@ -710,22 +752,25 @@ async function init() {
     if (handled) {
       $("sync-status").textContent = "Conexão com Trakt autorizada com sucesso!";
     }
-    const isAuth = TraktAuth.isAuthenticated();
-    const traktAuthBtn = $("btn-trakt-auth");
-    if (traktAuthBtn) {
-      traktAuthBtn.textContent = isAuth ? "Trakt Conectado" : "Conectar Trakt";
-      traktAuthBtn.addEventListener("click", () => {
-        if (isAuth) {
-          if (confirm("Deseja desconectar sua conta Trakt deste navegador?")) {
-            TraktAuth.logout();
-            location.reload();
-          }
-        } else {
-          TraktAuth.login();
-        }
-      });
-    }
   }
+
+  updateTraktConnectionUI();
+
+  $("btn-trakt-connect")?.addEventListener("click", () => {
+    if (!fbUser) {
+      alert("Você precisa entrar com sua conta Google proprietária antes de conectar o Trakt.");
+      return;
+    }
+    TraktAuth.login();
+  });
+
+  $("btn-trakt-disconnect")?.addEventListener("click", () => {
+    if (confirm("Deseja desconectar sua conta Trakt deste navegador?")) {
+      TraktAuth.logout();
+      updateTraktConnectionUI();
+      location.reload();
+    }
+  });
 
   $("btn-sync").addEventListener("click", () => loadCatalog({ sync: true }));
 
@@ -736,10 +781,15 @@ async function init() {
 /* Ouve eventos do Firebase Auth */
 window.addEventListener("fb-user", e => {
   fbUser = e.detail;
-  $("btn-login").textContent = fbUser ? "Sair" : "Entrar com Google";
+  const loginBtn = $("btn-login");
+  if (loginBtn) {
+    loginBtn.textContent = fbUser ? "Sair" : "Entrar com Google";
+    loginBtn.title = fbUser ? `Conectado como ${fbUser.name || fbUser.uid}. Clique para sair.` : "Entrar com sua conta Google";
+  }
   $("me").innerHTML = fbUser
-    ? `Logado como ${esc(fbUser.name)} · UID: <code>${esc(fbUser.uid)}</code>`
+    ? `Logado como ${esc(fbUser.name || "Proprietário")} · UID: <code>${esc(fbUser.uid)}</code> <button class="cp" data-copy="${esc(fbUser.uid)}">Copiar UID</button>`
     : "";
+  updateTraktConnectionUI();
   render();
 });
 

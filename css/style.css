@@ -64,18 +64,40 @@ a { color: var(--sun) }
   gap: 12px;
   padding: 20px clamp(20px, 4.2vw, 64px);
   flex-wrap: wrap;
-  z-index: 2;
+  z-index: 10;
 }
 .brand {
   font: 600 1.38rem var(--serif);
   letter-spacing: -.035em;
   text-shadow: 0 2px 18px #0008;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 .brand i { color: var(--sun); font-style: normal }
+.trakt-profile-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 10px;
+  padding: 5px 12px;
+  border: 1px solid var(--sun);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, .07);
+  color: var(--sun);
+  font: 500 .78rem var(--sans);
+  text-decoration: none;
+  vertical-align: middle;
+  transition: background .2s;
+}
+.trakt-profile-link:hover {
+  background: rgba(255, 145, 107, .18);
+}
 .project-version {
   display: inline-flex;
   align-items: center;
-  margin-left: 9px;
+  margin-left: 4px;
   padding: 3px 9px;
   border: 1px solid #ffffff35;
   border-radius: 999px;
@@ -97,6 +119,7 @@ a { color: var(--sun) }
   color: #c5cee2;
   font-size: .88rem;
   backdrop-filter: blur(16px);
+  white-space: nowrap;
 }
 .profile-chip strong { color: var(--gold); font-weight: 600 }
 .who button {
@@ -107,7 +130,9 @@ a { color: var(--sun) }
   padding: 7px 16px;
   backdrop-filter: blur(16px);
   box-shadow: 0 8px 28px rgba(0,0,0,.12);
-  transition: border-color .2s, background .2s, transform .2s;
+  font-size: .85rem;
+  white-space: nowrap;
+  transition: border-color .2s, background .2s, transform .2s, color .2s;
 }
 .who button:hover {
   border-color: rgba(255,145,107,.72);
@@ -167,6 +192,64 @@ a { color: var(--sun) }
   font-size: .82rem;
   min-height: 1.3em;
 }
+
+/* ============ CONEXÃO COM TRAKT ============ */
+.trakt-connect {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin: 14px 0 16px;
+  padding: 13px 18px;
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  background: linear-gradient(120deg, rgba(18,25,41,.9), rgba(18,25,41,.58));
+}
+.trakt-connect-info { display: grid; gap: 3px; min-width: 0 }
+.trakt-connect-info strong { font: 600 1rem var(--serif); color: var(--text) }
+.trakt-connect-status { color: var(--muted); font-size: .86rem; overflow-wrap: anywhere }
+.trakt-connect-actions { display: flex; gap: 8px; flex-wrap: wrap }
+.trakt-connect-actions button {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 8px 18px;
+  background: rgba(255,255,255,.04);
+  color: var(--text);
+  font-size: .85rem;
+  transition: .18s;
+}
+.trakt-connect-actions button:hover { border-color: var(--sun) }
+.trakt-connect-actions button.primary {
+  background: var(--sun);
+  border-color: transparent;
+  color: #1a0d08;
+  font-weight: 650;
+}
+.trakt-connect-actions button.primary:hover {
+  background: #ffa17f;
+}
+.trakt-connect-actions button:disabled {
+  opacity: .45;
+  cursor: not-allowed;
+  border-color: var(--line) !important;
+}
+@media (max-width: 560px) {
+  .trakt-connect { align-items: flex-start }
+  .trakt-connect-actions { width: 100% }
+}
+
+.cp {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 3px 9px;
+  font-size: .76rem;
+  color: #e7ebf5;
+  margin-left: 8px;
+  cursor: pointer;
+}
+.cp:hover { border-color: var(--sun) }
 
 /* ---------- Tabs ---------- */
 .tabs {

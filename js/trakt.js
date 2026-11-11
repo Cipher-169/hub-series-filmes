@@ -5,7 +5,7 @@
 
 const TRAKT_CLIENT_ID = "DvAFy0GF0AHogpxgm9MdBFZFt_Jzy1HAJsjfifVSbug";
 const TRAKT_API       = "https://api.trakt.tv";
-const TRAKT_OWNER     = "Clpher"; // username fixo no Trakt
+const TRAKT_OWNER     = "Cypher169"; // username fixo no Trakt
 
 /* URI de redirecionamento — detecta automaticamente o ambiente */
 const REDIRECT_URI = `${location.origin}${location.pathname}`;
