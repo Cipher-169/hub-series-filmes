@@ -94,6 +94,27 @@ window.hubFB = {
     await setDoc(notePath(itemId, type), { itemId: String(itemId), type, ...data, updatedAt: serverTimestamp() }, { merge: true });
     const old = (await cacheGet(`note:${type}:${itemId}`))?.data ?? {};
     await cacheSet(`note:${type}:${itemId}`, { ...old, ...data });
+    await cacheDelete(`all_${type}_notes`);
+  },
+
+  getAllMovieNotes: async ({ refresh = false } = {}) => {
+    if (refresh) await cacheDelete("all_movie_notes");
+    return freshOrCached("all_movie_notes", async () => {
+      const snap = await getDocs(collection(db, "users", OWNER_UID, "movieNotes"));
+      const out = {};
+      snap.forEach(d => out[d.id] = d.data());
+      return out;
+    });
+  },
+
+  getAllShowNotes: async ({ refresh = false } = {}) => {
+    if (refresh) await cacheDelete("all_show_notes");
+    return freshOrCached("all_show_notes", async () => {
+      const snap = await getDocs(collection(db, "users", OWNER_UID, "showNotes"));
+      const out = {};
+      snap.forEach(d => out[d.id] = d.data());
+      return out;
+    });
   },
 
   /* Logs de episódios / sessões */
