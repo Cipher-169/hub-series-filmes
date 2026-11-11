@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#101014">
+    <meta name="description" content="Seu espaço pessoal para organizar filmes e séries.">
+    <title>Meu Hub — Filmes e Séries</title>
+    <link rel="stylesheet" href="css/style.css">
+    <script src="js/app.js" defer></script>
+</head>
+<body>
+    <header class="topbar">
+        <a class="brand" href="./" aria-label="Meu Hub, página inicial">
+            <span class="brand-mark">H</span>
+            <span>meu<span class="brand-accent">hub</span></span>
+        </a>
+
+        <nav class="main-nav" aria-label="Navegação principal">
+            <a class="active" href="#inicio">Início</a>
+            <a href="#filmes">Filmes</a>
+            <a href="#series">Séries</a>
+            <a href="#minha-lista">Minha lista</a>
+        </nav>
+
+        <button class="profile-button" type="button" aria-label="Perfil">P</button>
+    </header>
+
+    <main id="inicio">
+        <section class="welcome-section">
+            <p class="eyebrow">SEU ESPAÇO, SUAS HISTÓRIAS</p>
+            <h1>O que vamos assistir <span>hoje?</span></h1>
+            <p class="welcome-copy">
+                Organize o que você já viu, acompanhe suas séries e registre suas próprias avaliações.
+            </p>
+            <div class="welcome-actions">
+                <a class="primary-button" href="#minha-lista">Ver minha lista</a>
+                <a class="secondary-button" href="#explorar">Explorar catálogo</a>
+            </div>
+        </section>
+
+        <section class="section-block" id="minha-lista">
+            <div class="section-heading">
+                <div>
+                    <p class="eyebrow">SUA COLEÇÃO</p>
+                    <h2>Seu espaço de acompanhamento</h2>
+                </div>
+            </div>
+
+            <div class="empty-state">
+                <div class="empty-icon" aria-hidden="true">＋</div>
+                <h3>Sua coleção começa aqui</h3>
+                <p>Em breve você poderá adicionar filmes e séries, acompanhar episódios e dar notas de 0 a 100.</p>
+            </div>
+        </section>
+
+        <section class="section-block" id="explorar">
+            <div class="section-heading">
+                <div>
+                    <p class="eyebrow">CATÁLOGO</p>
+                    <h2>Descubra algo novo</h2>
+                </div>
+                <span class="coming-soon">Em desenvolvimento</span>
+            </div>
+            <p class="section-description">
+                A integração com o Trakt será adicionada em uma próxima etapa.
+            </p>
+        </section>
+
+        <section class="sr-only" id="filmes" aria-label="Filmes"></section>
+        <section class="sr-only" id="series" aria-label="Séries"></section>
+    </main>
+
+    <footer class="footer">
+        <span>Meu Hub</span>
+        <span>Feito para organizar suas histórias.</span>
+    </footer>
+</body>
+</html>
