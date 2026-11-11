@@ -3,12 +3,24 @@
    trakt.js — Autenticação PKCE + chamadas à API do Trakt
    ===================================================================== */
 
-const TRAKT_CLIENT_ID = "DvAFy0GF0AHogpxgm9MdBFZFt_Jzy1HAJsjfifVSbug";
+const TRAKT_CLIENT_ID = "DvAFy0GF0AHogpxgm9MdBfZFt_JzylHAJsjfifVSbug";
 const TRAKT_API       = "https://api.trakt.tv";
 const TRAKT_OWNER     = "Cypher169"; // username fixo no Trakt
 
-/* URI de redirecionamento — detecta automaticamente o ambiente */
-const REDIRECT_URI = `${location.origin}${location.pathname}`;
+/* URI de redirecionamento — normaliza localhost/127.0.0.1 e remove index.html */
+function getRedirectUri() {
+  if (location.hostname.includes("github.io")) {
+    return "https://cipher-169.github.io/hub-series-filmes/";
+  }
+  const port = location.port ? `:${location.port}` : "";
+  let path = location.pathname;
+  if (path.endsWith("index.html")) path = path.slice(0, -10);
+  if (!path.endsWith("/")) path += "/";
+  // Usa localhost se estiver rodando localmente
+  const host = (location.hostname === "127.0.0.1" || location.hostname === "localhost") ? "localhost" : location.hostname;
+  return `${location.protocol}//${host}${port}${path}`;
+}
+const REDIRECT_URI = getRedirectUri();
 
 /* ---------- Chaves de armazenamento (localStorage) ---------- */
 const LS_TOKEN    = "trakt_token";
@@ -46,10 +58,11 @@ async function login() {
   const challenge  = await _generateChallenge(verifier);
   localStorage.setItem(LS_VERIFIER, verifier);
 
+  const redirectUri = getRedirectUri();
   const params = new URLSearchParams({
     response_type:         "code",
     client_id:             TRAKT_CLIENT_ID,
-    redirect_uri:          REDIRECT_URI,
+    redirect_uri:          redirectUri,
     code_challenge:        challenge,
     code_challenge_method: "S256",
   });
@@ -71,7 +84,7 @@ async function handleCallback() {
     body: JSON.stringify({
       code,
       client_id:     TRAKT_CLIENT_ID,
-      redirect_uri:  REDIRECT_URI,
+      redirect_uri:  getRedirectUri(),
       code_verifier: verifier,
       grant_type:    "authorization_code",
     }),
