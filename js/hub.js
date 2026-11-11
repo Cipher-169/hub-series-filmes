@@ -5,7 +5,7 @@
    CONTROLE DE VERSÃO:
    Sempre que modificar este arquivo incremente HUB_VERSION em +1.
    ===================================================================== */
-const HUB_VERSION = 6;
+const HUB_VERSION = 7;
 window.HUB_VERSION = HUB_VERSION;
 document.getElementById("project-version").textContent = `v${HUB_VERSION}`;
 
@@ -631,13 +631,19 @@ async function loadCatalog({ sync = false } = {}) {
     let rawData = null;
     const cacheKey = `trakt_catalog_${username}`;
 
-    if (!sync && window.TraktAuth) {
+    if (sync && window.TraktAuth) {
+      await TraktAuth.cacheDelete(cacheKey);
+    } else if (window.TraktAuth) {
       rawData = await TraktAuth.cacheGet(cacheKey);
     }
 
     if (!rawData && window.TraktAuth) {
       rawData = await TraktAuth.fetchCatalog(username);
-      await TraktAuth.cacheSet(cacheKey, rawData);
+      const totalRaw = (rawData.wMovies?.length || 0) + (rawData.wlMovies?.length || 0) + (rawData.cMovies?.length || 0) + (rawData.wShows?.length || 0) + (rawData.wlShows?.length || 0) + (rawData.cShows?.length || 0);
+      console.log("Trakt fetchCatalog total itens retornados:", totalRaw, rawData);
+      if (totalRaw > 0) {
+        await TraktAuth.cacheSet(cacheKey, rawData);
+      }
     }
 
     // Busca notas salvas no Firebase

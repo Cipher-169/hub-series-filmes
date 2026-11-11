@@ -122,15 +122,15 @@ function isAuthenticated() {
    CHAMADAS À API
    ===================================================================== */
 
-async function _request(endpoint, { auth = false } = {}) {
+async function _request(endpoint) {
   const headers = {
-    "Content-Type":    "application/json",
+    "Content-Type":      "application/json",
     "trakt-api-version": "2",
-    "trakt-api-key":   TRAKT_CLIENT_ID,
+    "trakt-api-key":     TRAKT_CLIENT_ID,
   };
-  if (auth) {
-    const token = localStorage.getItem(LS_TOKEN);
-    if (token) headers["Authorization"] = `Bearer ${token}`;
+  const token = localStorage.getItem(LS_TOKEN);
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
   }
 
   const res = await fetch(`${TRAKT_API}${endpoint}`, { headers });
@@ -140,35 +140,40 @@ async function _request(endpoint, { auth = false } = {}) {
 
 /* ---- Catálogo do usuário ---- */
 
-/** Filmes assistidos */
-async function fetchWatchedMovies(username = TRAKT_OWNER) {
-  return _request(`/users/${username}/watched/movies?extended=full`);
-}
-
-/** Filmes da watchlist (quero assistir) */
-async function fetchWatchlistMovies(username = TRAKT_OWNER) {
-  return _request(`/users/${username}/watchlist/movies?extended=full`);
-}
-
-/** Séries assistidas (inclui episódios por temporada) */
-async function fetchWatchedShows(username = TRAKT_OWNER) {
-  return _request(`/users/${username}/watched/shows?extended=full`);
-}
-
-/** Séries da watchlist */
-async function fetchWatchlistShows(username = TRAKT_OWNER) {
-  return _request(`/users/${username}/watchlist/shows?extended=full`);
-}
-
-/** Busca todo o catálogo de uma vez */
+/**
+ * Busca todo o catálogo do usuário no Trakt.
+ * Se autenticado, usa os endpoints oficiais /sync do Trakt que acessam a conta diretamente.
+ * Se não, tenta os endpoints públicos /users/{username}.
+ */
 async function fetchCatalog(username = TRAKT_OWNER) {
-  const [wMovies, wlMovies, wShows, wlShows] = await Promise.all([
-    fetchWatchedMovies(username),
-    fetchWatchlistMovies(username),
-    fetchWatchedShows(username),
-    fetchWatchlistShows(username),
+  const isAuth = isAuthenticated();
+
+  const endpoints = isAuth ? {
+    wMovies:  `/sync/watched/movies?extended=full`,
+    wlMovies: `/sync/watchlist/movies?extended=full`,
+    cMovies:  `/sync/collection/movies?extended=full`,
+    wShows:   `/sync/watched/shows?extended=full`,
+    wlShows:  `/sync/watchlist/shows?extended=full`,
+    cShows:   `/sync/collection/shows?extended=full`,
+  } : {
+    wMovies:  `/users/${username}/watched/movies?extended=full`,
+    wlMovies: `/users/${username}/watchlist/movies?extended=full`,
+    cMovies:  `/users/${username}/collection/movies?extended=full`,
+    wShows:   `/users/${username}/watched/shows?extended=full`,
+    wlShows:  `/users/${username}/watchlist/shows?extended=full`,
+    cShows:   `/users/${username}/collection/shows?extended=full`,
+  };
+
+  const [wMovies, wlMovies, cMovies, wShows, wlShows, cShows] = await Promise.all([
+    _request(endpoints.wMovies).catch(e => { console.warn("Trakt wMovies:", e); return []; }),
+    _request(endpoints.wlMovies).catch(e => { console.warn("Trakt wlMovies:", e); return []; }),
+    _request(endpoints.cMovies).catch(e => { console.warn("Trakt cMovies:", e); return []; }),
+    _request(endpoints.wShows).catch(e => { console.warn("Trakt wShows:", e); return []; }),
+    _request(endpoints.wlShows).catch(e => { console.warn("Trakt wlShows:", e); return []; }),
+    _request(endpoints.cShows).catch(e => { console.warn("Trakt cShows:", e); return []; }),
   ]);
-  return { wMovies, wlMovies, wShows, wlShows };
+
+  return { wMovies, wlMovies, cMovies, wShows, wlShows, cShows };
 }
 
 /** Detalhes de uma série (sinopse, etc.) */
@@ -183,7 +188,7 @@ async function fetchShowSeasons(id) {
 
 /** Progresso assistido de uma série para o usuário */
 async function fetchShowProgress(id, username = TRAKT_OWNER) {
-  return _request(`/users/${username}/shows/${id}/progress/watched`, { auth: true });
+  return _request(`/users/${username}/shows/${id}/progress/watched`);
 }
 
 /* =====================================================================
@@ -211,50 +216,82 @@ function _countWatchedEps(seasons = []) {
  * Transforma o catálogo bruto do Trakt em arrays {movies, shows}.
  * Também recebe as notas salvas no Firebase para mesclar.
  */
-function transformCatalog({ wMovies, wlMovies, wShows, wlShows }, fbNotes = {}) {
+function transformCatalog({ wMovies = [], wlMovies = [], cMovies = [], wShows = [], wlShows = [], cShows = [] } = {}, fbNotes = {}) {
   /* ---- FILMES ---- */
   const movieMap = new Map();
 
-  wMovies.forEach(({ movie, plays }) => {
+  // 1. Filmes assistidos
+  (Array.isArray(wMovies) ? wMovies : []).forEach(item => {
+    const movie = item.movie || item;
+    if (!movie?.ids?.trakt) return;
     const id = String(movie.ids.trakt);
     movieMap.set(id, {
       id,
-      type:    "movie",
-      title:   movie.title,
-      year:    movie.year,
-      status:  "completed",
-      plays:   plays ?? 1,
-      traktId: movie.ids.trakt,
-      tmdbId:  movie.ids.tmdb,
-      imdbId:  movie.ids.imdb,
-      slug:    movie.ids.slug,
+      type:     "movie",
+      title:    movie.title || "Filme sem título",
+      year:     movie.year || null,
+      status:   "completed",
+      plays:    item.plays ?? 1,
+      traktId:  movie.ids.trakt,
+      tmdbId:   movie.ids.tmdb,
+      imdbId:   movie.ids.imdb,
+      slug:     movie.ids.slug,
       overview: movie.overview ?? "",
-      traktUrl: `https://trakt.tv/movies/${movie.ids.slug}`,
-      cover:   null, // preenchido via TMDB depois
-      banner:  null,
-      score:   fbNotes[`movie_${id}`]?.score ?? 0,
+      traktUrl: movie.ids.slug ? `https://trakt.tv/movies/${movie.ids.slug}` : `https://trakt.tv`,
+      cover:    null,
+      banner:   null,
+      score:    fbNotes[`movie_${id}`]?.score ?? 0,
     });
   });
 
-  wlMovies.forEach(({ movie }) => {
+  // 2. Filmes na watchlist (quero assistir)
+  (Array.isArray(wlMovies) ? wlMovies : []).forEach(item => {
+    const movie = item.movie || item;
+    if (!movie?.ids?.trakt) return;
     const id = String(movie.ids.trakt);
     if (!movieMap.has(id)) {
       movieMap.set(id, {
         id,
-        type:    "movie",
-        title:   movie.title,
-        year:    movie.year,
-        status:  "plantowatch",
-        plays:   0,
-        traktId: movie.ids.trakt,
-        tmdbId:  movie.ids.tmdb,
-        imdbId:  movie.ids.imdb,
-        slug:    movie.ids.slug,
+        type:     "movie",
+        title:    movie.title || "Filme sem título",
+        year:     movie.year || null,
+        status:   "plantowatch",
+        plays:    0,
+        traktId:  movie.ids.trakt,
+        tmdbId:   movie.ids.tmdb,
+        imdbId:   movie.ids.imdb,
+        slug:     movie.ids.slug,
         overview: movie.overview ?? "",
-        traktUrl: `https://trakt.tv/movies/${movie.ids.slug}`,
-        cover:   null,
-        banner:  null,
-        score:   fbNotes[`movie_${id}`]?.score ?? 0,
+        traktUrl: movie.ids.slug ? `https://trakt.tv/movies/${movie.ids.slug}` : `https://trakt.tv`,
+        cover:    null,
+        banner:   null,
+        score:    fbNotes[`movie_${id}`]?.score ?? 0,
+      });
+    }
+  });
+
+  // 3. Filmes na coleção (se não estiver nos anteriores)
+  (Array.isArray(cMovies) ? cMovies : []).forEach(item => {
+    const movie = item.movie || item;
+    if (!movie?.ids?.trakt) return;
+    const id = String(movie.ids.trakt);
+    if (!movieMap.has(id)) {
+      movieMap.set(id, {
+        id,
+        type:     "movie",
+        title:    movie.title || "Filme sem título",
+        year:     movie.year || null,
+        status:   "plantowatch",
+        plays:    0,
+        traktId:  movie.ids.trakt,
+        tmdbId:   movie.ids.tmdb,
+        imdbId:   movie.ids.imdb,
+        slug:     movie.ids.slug,
+        overview: movie.overview ?? "",
+        traktUrl: movie.ids.slug ? `https://trakt.tv/movies/${movie.ids.slug}` : `https://trakt.tv`,
+        cover:    null,
+        banner:   null,
+        score:    fbNotes[`movie_${id}`]?.score ?? 0,
       });
     }
   });
@@ -262,55 +299,91 @@ function transformCatalog({ wMovies, wlMovies, wShows, wlShows }, fbNotes = {}) 
   /* ---- SÉRIES ---- */
   const showMap = new Map();
 
-  wShows.forEach(({ show, seasons, plays }) => {
+  // 1. Séries assistidas
+  (Array.isArray(wShows) ? wShows : []).forEach(item => {
+    const show = item.show || item;
+    if (!show?.ids?.trakt) return;
     const id      = String(show.ids.trakt);
+    const seasons = item.seasons || [];
     const watched = _countWatchedEps(seasons);
     const status  = _showStatus({ show, seasons });
 
     showMap.set(id, {
       id,
       type:     "show",
-      title:    show.title,
-      year:     show.year,
+      title:    show.title || "Série sem título",
+      year:     show.year || null,
       status,
-      plays:    plays ?? 1,
+      plays:    item.plays ?? 1,
       progress: watched,
-      eps:      null, // total de eps — buscamos depois ao abrir a série
-      seasons,        // detalhes de episódios assistidos
+      eps:      null,
+      seasons,
       traktId:  show.ids.trakt,
       tmdbId:   show.ids.tmdb,
       imdbId:   show.ids.imdb,
       slug:     show.ids.slug,
       overview: show.overview ?? "",
-      traktUrl: `https://trakt.tv/shows/${show.ids.slug}`,
+      traktUrl: show.ids.slug ? `https://trakt.tv/shows/${show.ids.slug}` : `https://trakt.tv`,
       cover:    null,
       banner:   null,
       score:    fbNotes[`show_${id}`]?.scoreOverall ?? 0,
     });
   });
 
-  wlShows.forEach(({ show }) => {
+  // 2. Séries na watchlist
+  (Array.isArray(wlShows) ? wlShows : []).forEach(item => {
+    const show = item.show || item;
+    if (!show?.ids?.trakt) return;
     const id = String(show.ids.trakt);
     if (!showMap.has(id)) {
       showMap.set(id, {
         id,
-        type:    "show",
-        title:   show.title,
-        year:    show.year,
-        status:  "plantowatch",
-        plays:   0,
+        type:     "show",
+        title:    show.title || "Série sem título",
+        year:     show.year || null,
+        status:   "plantowatch",
+        plays:    0,
         progress: 0,
-        eps:     null,
-        seasons: [],
-        traktId: show.ids.trakt,
-        tmdbId:  show.ids.tmdb,
-        imdbId:  show.ids.imdb,
-        slug:    show.ids.slug,
+        eps:      null,
+        seasons:  [],
+        traktId:  show.ids.trakt,
+        tmdbId:   show.ids.tmdb,
+        imdbId:   show.ids.imdb,
+        slug:     show.ids.slug,
         overview: show.overview ?? "",
-        traktUrl: `https://trakt.tv/shows/${show.ids.slug}`,
-        cover:   null,
-        banner:  null,
-        score:   fbNotes[`show_${id}`]?.scoreOverall ?? 0,
+        traktUrl: show.ids.slug ? `https://trakt.tv/shows/${show.ids.slug}` : `https://trakt.tv`,
+        cover:    null,
+        banner:   null,
+        score:    fbNotes[`show_${id}`]?.scoreOverall ?? 0,
+      });
+    }
+  });
+
+  // 3. Séries na coleção
+  (Array.isArray(cShows) ? cShows : []).forEach(item => {
+    const show = item.show || item;
+    if (!show?.ids?.trakt) return;
+    const id = String(show.ids.trakt);
+    if (!showMap.has(id)) {
+      showMap.set(id, {
+        id,
+        type:     "show",
+        title:    show.title || "Série sem título",
+        year:     show.year || null,
+        status:   "plantowatch",
+        plays:    0,
+        progress: 0,
+        eps:      null,
+        seasons:  [],
+        traktId:  show.ids.trakt,
+        tmdbId:   show.ids.tmdb,
+        imdbId:   show.ids.imdb,
+        slug:     show.ids.slug,
+        overview: show.overview ?? "",
+        traktUrl: show.ids.slug ? `https://trakt.tv/shows/${show.ids.slug}` : `https://trakt.tv`,
+        cover:    null,
+        banner:   null,
+        score:    fbNotes[`show_${id}`]?.scoreOverall ?? 0,
       });
     }
   });
