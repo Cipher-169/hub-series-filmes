@@ -5,7 +5,7 @@
    CONTROLE DE VERSÃO:
    Sempre que modificar este arquivo incremente HUB_VERSION em +1.
    ===================================================================== */
-const HUB_VERSION = 11;
+const HUB_VERSION = 12;
 window.HUB_VERSION = HUB_VERSION;
 document.getElementById("project-version").textContent = `v${HUB_VERSION}`;
 
@@ -22,6 +22,7 @@ let shows      = [];   // catálogo de séries
 let watching   = [];   // em andamento (filmes + séries)
 let activeItem = null; // item aberto no modal
 let showSeasonsCache = new Map(); // cache das temporadas de séries
+let tmdbSearchResults = [];
 const TMDB_WORKER_URL = "https://hub-filmes-series.world-testaocenter790.workers.dev";
 
 /* ---------- Tiers de nota (0–100) ---------- */
@@ -85,7 +86,7 @@ function renderAgora() {
 function renderFilmes() {
   const list = filtered(movies);
   if (!list.length) {
-    $("view").innerHTML = `<h2>Meus filmes</h2><div class="msg">Nenhum filme encontrado com esses filtros.</div>`;
+    $("view").innerHTML = `<h2>Meus filmes</h2><div class="msg">Sua biblioteca de filmes está vazia. Use “Adicionar título” acima para começar.</div>`;
     return;
   }
   const byStatus = groupByStatus(list);
@@ -101,7 +102,7 @@ function renderFilmes() {
 function renderSeries() {
   const list = filtered(shows);
   if (!list.length) {
-    $("view").innerHTML = `<h2>Minhas séries</h2><div class="msg">Nenhuma série encontrada com esses filtros.</div>`;
+    $("view").innerHTML = `<h2>Minhas séries</h2><div class="msg">Sua biblioteca de séries está vazia. Use “Adicionar título” acima para começar.</div>`;
     return;
   }
   const byStatus = groupByStatus(list);
@@ -706,6 +707,63 @@ async function loadCatalog() {
     movies = []; shows = []; watching = []; renderHero(); render();
   }
 }
+
+/* Busca TMDB e inclusão na biblioteca pessoal */
+const searchForm = $("tmdb-search-form");
+searchForm?.addEventListener("submit", async event => {
+  event.preventDefault();
+  const queryText = $("tmdb-search-input").value.trim();
+  const mediaType = $("tmdb-search-type").value;
+  const status = $("tmdb-search-status");
+  const resultsEl = $("tmdb-search-results");
+  if (queryText.length < 2) { status.textContent = "Digite pelo menos 2 caracteres."; return; }
+  status.textContent = "Buscando no TMDB…";
+  resultsEl.innerHTML = "";
+  $("tmdb-search-submit").disabled = true;
+  try {
+    const response = await fetch(`${TMDB_WORKER_URL}/api/tmdb/search/${mediaType}?query=${encodeURIComponent(queryText)}`);
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || `TMDB HTTP ${response.status}`);
+    tmdbSearchResults = data.results || [];
+    if (!tmdbSearchResults.length) { status.textContent = "Nenhum resultado encontrado. Tente outro termo."; return; }
+    status.textContent = `${data.totalResults || tmdbSearchResults.length} resultado(s) encontrado(s).`;
+    const existing = new Set([...movies, ...shows].map(item => `${item.type}:${item.id}`));
+    resultsEl.innerHTML = tmdbSearchResults.map(item => {
+      const type = item.mediaType === "tv" ? "show" : "movie";
+      const already = existing.has(`${type}:${item.id}`);
+      const poster = item.posterUrl ? `<img src="${esc(item.posterUrl)}" alt="" loading="lazy">` : `<div class="search-poster-fallback">${type === "show" ? "▣" : "▤"}</div>`;
+      return `<article class="tmdb-result">${poster}<div class="tmdb-result-info"><strong>${esc(item.title)}</strong><span>${item.year || "Ano não informado"} · ${type === "show" ? "Série" : "Filme"}</span><p>${esc(item.overview || "Sinopse indisponível.")}</p></div><button type="button" class="tmdb-add-btn" data-add-tmdb="${esc(item.id)}" ${already || !fbUser ? "disabled" : ""}>${already ? "Adicionado" : fbUser ? "Adicionar" : "Entre para adicionar"}</button></article>`;
+    }).join("");
+  } catch (error) {
+    console.error("Busca TMDB falhou:", error);
+    status.textContent = `Não foi possível pesquisar: ${error.message}`;
+  } finally { $("tmdb-search-submit").disabled = false; }
+});
+
+$("tmdb-search-results")?.addEventListener("click", async event => {
+  const button = event.target.closest("[data-add-tmdb]");
+  if (!button) return;
+  if (!fbUser || !window.hubFB) { alert("Entre com sua conta Google para adicionar títulos."); return; }
+  const found = tmdbSearchResults.find(item => String(item.id) === button.dataset.addTmdb);
+  if (!found) return;
+  button.disabled = true; button.textContent = "Adicionando…";
+  try {
+    const mediaType = found.mediaType;
+    const detailResponse = await fetch(`${TMDB_WORKER_URL}/api/tmdb/${mediaType}/${found.id}`);
+    if (!detailResponse.ok) throw new Error("Não foi possível carregar os detalhes do título.");
+    const detail = await detailResponse.json();
+    await hubFB.addCatalogItem({ ...detail, status: "plantowatch" });
+    await loadCatalog();
+    button.textContent = "Adicionado";
+    const type = mediaType === "tv" ? "show" : "movie";
+    const result = button.closest(".tmdb-result");
+    result?.classList.add("is-added");
+  } catch (error) {
+    console.error("Falha ao adicionar título:", error);
+    button.disabled = false; button.textContent = "Tentar novamente";
+    alert(`Não foi possível adicionar: ${error.code || error.message}`);
+  }
+});
 
 /* Inicialização */
 async function init() { if (window.hubFB) await loadCatalog(); else $("sync-status").textContent = "Conectando ao Firebase…"; }

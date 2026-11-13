@@ -123,27 +123,35 @@ window.hubFB = {
   },
   logout: () => signOut(auth),
 
-  /* Biblioteca própria: IDs do TMDB como identificadores permanentes. */
+  /* Biblioteca própria: catálogo marcado nos documentos já autorizados pelas regras atuais. */
   getCatalog: async ({ refresh = false } = {}) => {
-    if (refresh) await cacheDelete("personal_catalog");
+    if (refresh) { await cacheDelete("personal_catalog"); await cacheDelete("all_movie_notes"); await cacheDelete("all_show_notes"); }
     return freshOrCached("personal_catalog", async () => {
-      const snap = await getDocs(collection(db, "users", OWNER_UID, "personalCatalog"));
-      return snap.docs.map(d => ({ ...d.data(), id: String(d.data().id || d.id.replace(/^(movie|tv)_/, "")) }));
+      const [moviesSnap, showsSnap] = await Promise.all([
+        getDocs(collection(db, "users", OWNER_UID, "movieNotes")),
+        getDocs(collection(db, "users", OWNER_UID, "showNotes")),
+      ]);
+      const movies = moviesSnap.docs.filter(d => d.data().inCatalog === true).map(d => ({ ...d.data(), id: String(d.data().id || d.id), mediaType: "movie", type: "movie" }));
+      const shows = showsSnap.docs.filter(d => d.data().inCatalog === true).map(d => ({ ...d.data(), id: String(d.data().id || d.id), mediaType: "tv", type: "show" }));
+      return [...movies, ...shows];
     });
   },
   addCatalogItem: async item => {
     requireOwner();
     if (!item?.id || !["movie", "tv"].includes(item.mediaType)) throw new Error("Título TMDB inválido.");
     const id = String(item.id);
-    await setDoc(doc(db, "users", OWNER_UID, "personalCatalog", `${item.mediaType}_${id}`), {
-      ...item, id, type: item.mediaType === "tv" ? "show" : "movie", status: item.status || "plantowatch", addedAt: serverTimestamp()
+    const type = item.mediaType === "tv" ? "show" : "movie";
+    await setDoc(notePath(id, type), {
+      ...item, id, itemId: id, type, inCatalog: true,
+      status: item.status || "plantowatch", addedAt: serverTimestamp()
     }, { merge: true });
     await cacheDelete("personal_catalog");
+    await cacheDelete(`note:${type}:${id}`);
   },
   removeCatalogItem: async (id, type) => {
     requireOwner();
-    const mediaType = type === "show" ? "tv" : "movie";
-    await deleteDoc(doc(db, "users", OWNER_UID, "personalCatalog", `${mediaType}_${id}`));
+    const itemType = type === "tv" ? "show" : type;
+    await setDoc(notePath(id, itemType), { inCatalog: false, removedAt: serverTimestamp() }, { merge: true });
     await cacheDelete("personal_catalog");
   },
 
@@ -160,6 +168,7 @@ window.hubFB = {
     const old = (await cacheGet(`note:${type}:${itemId}`))?.data ?? {};
     await cacheSet(`note:${type}:${itemId}`, { ...old, ...data });
     await cacheDelete(`all_${type}_notes`);
+    await cacheDelete("personal_catalog");
   },
 
   getAllMovieNotes: async ({ refresh = false } = {}) => {
