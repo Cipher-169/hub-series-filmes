@@ -415,7 +415,7 @@ async function enrichWithPosters(items = []) {
     while (cursor < queue.length) {
       const item = queue[cursor++];
       const kind = item.type === "movie" ? "movie" : "tv";
-      const cacheKey = `tmdb_images_${kind}_${item.tmdbId}`;
+      const cacheKey = `tmdb_images_v2_${kind}_${item.tmdbId}`;
 
       try {
         let images = await cacheGet(cacheKey);
