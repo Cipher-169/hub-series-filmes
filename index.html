@@ -35,34 +35,18 @@
 
   <p class="meta" id="me"></p>
 
-  <!-- Busca e adição de títulos via TMDB -->
-  <section class="catalog-search" aria-labelledby="catalog-search-title">
-    <div class="catalog-search-heading">
-      <div><span class="eyebrow">SUA BIBLIOTECA</span><h2 id="catalog-search-title">Adicionar título</h2></div>
-      <span class="search-source">Busca no TMDB</span>
-    </div>
-    <form id="tmdb-search-form" class="catalog-search-form">
-      <select id="tmdb-search-type" aria-label="Tipo de título">
-        <option value="movie">Filmes</option><option value="tv">Séries</option>
-      </select>
-      <input id="tmdb-search-input" type="search" minlength="2" placeholder="Busque por nome…" autocomplete="off" required>
-      <button type="submit" id="tmdb-search-submit">Buscar</button>
-    </form>
-    <p class="search-hint" id="tmdb-search-status">Pesquise no catálogo do TMDB e adicione os títulos à sua biblioteca.</p>
-    <div id="tmdb-search-results" class="tmdb-search-results" aria-live="polite"></div>
-  </section>
-
   <!-- Abas -->
   <div class="tabs" role="tablist">
     <button role="tab" aria-selected="true"  data-tab="agora">Agora</button>
     <button role="tab" aria-selected="false" data-tab="filmes">Filmes</button>
     <button role="tab" aria-selected="false" data-tab="series">Séries</button>
+    <button role="tab" aria-selected="false" data-tab="descobrir">Descobrir</button>
     <button role="tab" aria-selected="false" data-tab="stats" id="stats-tab" class="hidden">Estatísticas</button>
   </div>
 
   <!-- Barra de filtros (visível em Filmes/Séries) -->
   <div class="bar hidden" id="filters">
-    <input id="search-query" type="search" placeholder="Filtrar por nome…" aria-label="Filtrar por nome">
+    <input id="search-query" type="search" placeholder="Buscar na minha biblioteca…" aria-label="Filtrar por nome">
     <select id="filter-status" aria-label="Status">
       <option value="">Todos os status</option>
       <option value="watching">Assistindo</option>

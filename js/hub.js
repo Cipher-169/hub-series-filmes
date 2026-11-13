@@ -5,7 +5,7 @@
    CONTROLE DE VERSÃO:
    Sempre que modificar este arquivo incremente HUB_VERSION em +1.
    ===================================================================== */
-const HUB_VERSION = 12;
+const HUB_VERSION = 13;
 window.HUB_VERSION = HUB_VERSION;
 document.getElementById("project-version").textContent = `v${HUB_VERSION}`;
 
@@ -23,6 +23,8 @@ let watching   = [];   // em andamento (filmes + séries)
 let activeItem = null; // item aberto no modal
 let showSeasonsCache = new Map(); // cache das temporadas de séries
 let tmdbSearchResults = [];
+let discoverLoaded = false;
+let discoverLoading = false;
 const TMDB_WORKER_URL = "https://hub-filmes-series.world-testaocenter790.workers.dev";
 
 /* ---------- Tiers de nota (0–100) ---------- */
@@ -112,6 +114,65 @@ function renderSeries() {
       <h2>${statusLabel(st)} <span class="meta">${items.length}</span></h2>
       <div class="grid">${items.map(posterCard).join("")}</div>`)
     .join("");
+}
+
+
+/* ---- Descobrir: busca integrada + catálogo TMDB ---- */
+async function renderDiscover() {
+  $("view").innerHTML = `
+    <section class="discover-head">
+      <span class="eyebrow">EXPLORE O UNIVERSO DO CINEMA</span>
+      <h2>Encontre sua próxima história.</h2>
+      <p>Pesquise um título ou explore o que está em alta no cinema e na televisão.</p>
+      <form id="tmdb-search-form" class="catalog-search-form discover-search">
+        <select id="tmdb-search-type" aria-label="Tipo de título"><option value="multi">Tudo</option><option value="movie">Filmes</option><option value="tv">Séries</option></select>
+        <input id="tmdb-search-input" type="search" minlength="2" placeholder="Qual título você procura?" autocomplete="off" required>
+        <button type="submit" id="tmdb-search-submit">Buscar</button>
+      </form>
+      <p class="search-hint" id="tmdb-search-status">A busca consulta o catálogo do TMDB. Você pode adicionar os títulos à sua biblioteca.</p>
+      <div id="tmdb-search-results" class="tmdb-search-results" aria-live="polite"></div>
+    </section>
+    <div id="discover-sections" class="discover-sections"><div class="discover-loading">Carregando recomendações…</div></div>`;
+  bindDiscoverSearch();
+  if (!discoverLoaded && !discoverLoading) await loadDiscoverSections();
+}
+async function loadDiscoverSections() {
+  discoverLoading = true;
+  const target = $("discover-sections");
+  if (!target) { discoverLoading = false; return; }
+  const sections = [
+    ["Em alta esta semana", "/api/tmdb/trending/all/week"],
+    ["Filmes populares", "/api/tmdb/discover/movie?sort_by=popularity.desc"],
+    ["Séries populares", "/api/tmdb/discover/tv?sort_by=popularity.desc"],
+    ["Filmes mais bem avaliados", "/api/tmdb/discover/movie?sort_by=vote_average.desc&vote_count.gte=500"],
+    ["Séries mais bem avaliadas", "/api/tmdb/discover/tv?sort_by=vote_average.desc&vote_count.gte=200"]
+  ];
+  try {
+    const data = await Promise.all(sections.map(async ([title,path]) => { const r=await fetch(`${TMDB_WORKER_URL}${path}`); if(!r.ok) throw new Error(`Falha ao carregar ${title.toLowerCase()}`); return {title,items:(await r.json()).results||[]}; }));
+    discoverLoaded = true;
+    target.innerHTML = data.map(s=>`<section class="discover-row"><div class="discover-row-heading"><h2>${esc(s.title)}</h2><span>TMDB</span></div><div class="discover-grid">${s.items.slice(0,12).map(discoverCard).join("")}</div></section>`).join("");
+  } catch(e) { target.innerHTML=`<div class="msg err">Não foi possível carregar as sugestões: ${esc(e.message)}.</div><button class="discover-retry" id="discover-retry">Tentar novamente</button>`; }
+  finally { discoverLoading=false; }
+}
+function discoverCard(item) {
+  const type=item.mediaType==="tv"?"show":"movie";
+  const exists=[...movies,...shows].some(x=>x.type===type&&String(x.id)===String(item.id));
+  const poster=item.posterUrl?`<img src="${esc(item.posterUrl)}" alt="Pôster de ${esc(item.title)}" loading="lazy">`:`<div class="discover-no-poster">Sem pôster</div>`;
+  return `<article class="discover-card">${poster}<div class="discover-card-info"><strong>${esc(item.title)}</strong><span>${item.year||"Ano desconhecido"} · ${type==="show"?"Série":"Filme"}</span><button type="button" data-add-tmdb="${esc(item.id)}" data-media-type="${item.mediaType}" ${exists||!fbUser?"disabled":""}>${exists?"Na biblioteca":fbUser?"+ Adicionar":"Entre para adicionar"}</button></div></article>`;
+}
+function bindDiscoverSearch() {
+  $("tmdb-search-form")?.addEventListener("submit",async e=>{
+    e.preventDefault(); const q=$("tmdb-search-input").value.trim(), type=$("tmdb-search-type").value, status=$("tmdb-search-status"), out=$("tmdb-search-results");
+    if(q.length<2){status.textContent="Digite pelo menos 2 caracteres.";return;}
+    status.textContent="Buscando no TMDB…";out.innerHTML="";$("tmdb-search-submit").disabled=true;
+    try {
+      const r=await fetch(`${TMDB_WORKER_URL}/api/tmdb/search/${type}?query=${encodeURIComponent(q)}`),d=await r.json(); if(!r.ok)throw new Error(d.error||`TMDB HTTP ${r.status}`);
+      tmdbSearchResults=d.results||[]; if(!tmdbSearchResults.length){status.textContent="Nenhum resultado encontrado.";return;}
+      status.textContent=`${d.totalResults||tmdbSearchResults.length} resultado(s) encontrado(s).`;
+      const existing=new Set([...movies,...shows].map(x=>`${x.type}:${x.id}`));
+      out.innerHTML=tmdbSearchResults.map(item=>{const t=item.mediaType==="tv"?"show":"movie",added=existing.has(`${t}:${item.id}`),img=item.posterUrl?`<img src="${esc(item.posterUrl)}" alt="" loading="lazy">`:`<div class="search-poster-fallback">▤</div>`;return `<article class="tmdb-result">${img}<div class="tmdb-result-info"><strong>${esc(item.title)}</strong><span>${item.year||"Ano não informado"} · ${t==="show"?"Série":"Filme"}</span><p>${esc(item.overview||"Sinopse indisponível.")}</p></div><button type="button" class="tmdb-add-btn" data-add-tmdb="${esc(item.id)}" data-media-type="${item.mediaType}" ${added||!fbUser?"disabled":""}>${added?"Na biblioteca":fbUser?"Adicionar":"Entre para adicionar"}</button></article>`;}).join("");
+    } catch(err){status.textContent=`Não foi possível pesquisar: ${err.message}`;} finally{$("tmdb-search-submit").disabled=false;}
+  });
 }
 
 /* ---- Aba "Estatísticas" ---- */
@@ -625,7 +686,7 @@ function render() {
   $("filters").classList.toggle("hidden", !showFilters);
   $("stats-tab").classList.toggle("hidden", !fbUser);
 
-  ({ agora: renderAgora, filmes: renderFilmes, series: renderSeries, stats: renderStats })[tab]?.();
+  ({ agora: renderAgora, filmes: renderFilmes, series: renderSeries, descobrir: renderDiscover, stats: renderStats })[tab]?.();
 }
 
 document.querySelectorAll(".tabs button").forEach(b => b.addEventListener("click", () => {
@@ -708,61 +769,15 @@ async function loadCatalog() {
   }
 }
 
-/* Busca TMDB e inclusão na biblioteca pessoal */
-const searchForm = $("tmdb-search-form");
-searchForm?.addEventListener("submit", async event => {
-  event.preventDefault();
-  const queryText = $("tmdb-search-input").value.trim();
-  const mediaType = $("tmdb-search-type").value;
-  const status = $("tmdb-search-status");
-  const resultsEl = $("tmdb-search-results");
-  if (queryText.length < 2) { status.textContent = "Digite pelo menos 2 caracteres."; return; }
-  status.textContent = "Buscando no TMDB…";
-  resultsEl.innerHTML = "";
-  $("tmdb-search-submit").disabled = true;
-  try {
-    const response = await fetch(`${TMDB_WORKER_URL}/api/tmdb/search/${mediaType}?query=${encodeURIComponent(queryText)}`);
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.error || `TMDB HTTP ${response.status}`);
-    tmdbSearchResults = data.results || [];
-    if (!tmdbSearchResults.length) { status.textContent = "Nenhum resultado encontrado. Tente outro termo."; return; }
-    status.textContent = `${data.totalResults || tmdbSearchResults.length} resultado(s) encontrado(s).`;
-    const existing = new Set([...movies, ...shows].map(item => `${item.type}:${item.id}`));
-    resultsEl.innerHTML = tmdbSearchResults.map(item => {
-      const type = item.mediaType === "tv" ? "show" : "movie";
-      const already = existing.has(`${type}:${item.id}`);
-      const poster = item.posterUrl ? `<img src="${esc(item.posterUrl)}" alt="" loading="lazy">` : `<div class="search-poster-fallback">${type === "show" ? "▣" : "▤"}</div>`;
-      return `<article class="tmdb-result">${poster}<div class="tmdb-result-info"><strong>${esc(item.title)}</strong><span>${item.year || "Ano não informado"} · ${type === "show" ? "Série" : "Filme"}</span><p>${esc(item.overview || "Sinopse indisponível.")}</p></div><button type="button" class="tmdb-add-btn" data-add-tmdb="${esc(item.id)}" ${already || !fbUser ? "disabled" : ""}>${already ? "Adicionado" : fbUser ? "Adicionar" : "Entre para adicionar"}</button></article>`;
-    }).join("");
-  } catch (error) {
-    console.error("Busca TMDB falhou:", error);
-    status.textContent = `Não foi possível pesquisar: ${error.message}`;
-  } finally { $("tmdb-search-submit").disabled = false; }
-});
-
-$("tmdb-search-results")?.addEventListener("click", async event => {
-  const button = event.target.closest("[data-add-tmdb]");
-  if (!button) return;
-  if (!fbUser || !window.hubFB) { alert("Entre com sua conta Google para adicionar títulos."); return; }
-  const found = tmdbSearchResults.find(item => String(item.id) === button.dataset.addTmdb);
-  if (!found) return;
-  button.disabled = true; button.textContent = "Adicionando…";
-  try {
-    const mediaType = found.mediaType;
-    const detailResponse = await fetch(`${TMDB_WORKER_URL}/api/tmdb/${mediaType}/${found.id}`);
-    if (!detailResponse.ok) throw new Error("Não foi possível carregar os detalhes do título.");
-    const detail = await detailResponse.json();
-    await hubFB.addCatalogItem({ ...detail, status: "plantowatch" });
-    await loadCatalog();
-    button.textContent = "Adicionado";
-    const type = mediaType === "tv" ? "show" : "movie";
-    const result = button.closest(".tmdb-result");
-    result?.classList.add("is-added");
-  } catch (error) {
-    console.error("Falha ao adicionar título:", error);
-    button.disabled = false; button.textContent = "Tentar novamente";
-    alert(`Não foi possível adicionar: ${error.code || error.message}`);
-  }
+/* Adicionar título à biblioteca a partir da busca ou das recomendações */
+document.addEventListener("click",async e=>{
+  if(e.target.closest("#discover-retry")){discoverLoaded=false;loadDiscoverSections();return;}
+  const button=e.target.closest("[data-add-tmdb]"); if(!button)return;
+  if(!fbUser||!window.hubFB){alert("Entre com sua conta Google para adicionar títulos.");return;}
+  const id=button.dataset.addTmdb, mediaType=button.dataset.mediaType||tmdbSearchResults.find(x=>String(x.id)===id)?.mediaType; if(!mediaType)return;
+  button.disabled=true;button.textContent="Adicionando…";
+  try{const r=await fetch(`${TMDB_WORKER_URL}/api/tmdb/${mediaType}/${id}`);if(!r.ok)throw new Error("Não foi possível carregar os detalhes do título.");const detail=await r.json();await hubFB.addCatalogItem({...detail,status:"plantowatch"});await loadCatalog();button.textContent="Adicionado";button.closest(".tmdb-result,.discover-card")?.classList.add("is-added");}
+  catch(err){console.error(err);button.disabled=false;button.textContent="Tentar novamente";alert(`Não foi possível adicionar: ${err.code||err.message}`);}
 });
 
 /* Inicialização */
