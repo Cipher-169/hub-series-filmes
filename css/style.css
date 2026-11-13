@@ -1533,17 +1533,19 @@ dialog::backdrop { background: rgba(8,7,6,.8); backdrop-filter: blur(7px); }
 .diary-edit-form .diary-actions button { padding:7px 12px; border:1px solid var(--line); border-radius:4px; background:transparent; color:var(--text); cursor:pointer; }
 .diary-edit-form .diary-actions button[type="submit"] { border-color:var(--gold); background:var(--gold); color:#211a10; }
 
-/* V15 — Descobrir: cabeçalho compacto, busca paginada e limpeza */
+/* V17 — Descobrir mantém o destaque cinematográfico do topo.
+   A compactação se aplica aos resultados, não ao hero global. */
 body.discover-mode .hero {
-  min-height: 112px;
-  height: 112px;
-  background-image: none !important;
+  min-height: clamp(470px, 65vh, 700px);
+  height: auto;
   background-color: #171613;
-  border-bottom: 1px solid var(--line);
+  background-size: cover;
+  background-position: center 32%;
+  border-bottom: none;
 }
-body.discover-mode .hero::before { display:none; }
-body.discover-mode .hero-in { display:none; }
-body.discover-mode .top { min-height:112px; padding-top:14px; padding-bottom:14px; background:#171613; }
+body.discover-mode .hero::before { display:block; }
+body.discover-mode .hero-in { display:flex; }
+body.discover-mode .top { padding-top:14px; padding-bottom:14px; }
 .discover-head { margin-top:20px; padding:22px 24px; }
 .discover-head h2 { font-size:clamp(1.55rem,3vw,2.15rem); }
 .discover-search { max-width:100%; }
@@ -1556,8 +1558,50 @@ body.discover-mode .top { min-height:112px; padding-top:14px; padding-bottom:14p
 .search-pagination button:disabled { opacity:.35; cursor:default; }
 .tmdb-search-results { grid-template-columns:repeat(2,minmax(0,1fr)); align-items:start; }
 @media(max-width:760px) {
-  body.discover-mode .hero, body.discover-mode .top { min-height:94px; height:94px; }
+  body.discover-mode .hero { min-height: clamp(390px, 58vh, 560px); }
   body.discover-mode .top { padding:12px 18px; }
   .tmdb-search-results { grid-template-columns:1fr; }
   .search-result-actions { align-items:flex-start; flex-direction:column; }
+}
+
+
+/* V16 — resultados de busca compactos */
+.tmdb-search-results .discover-card {
+  display:grid;
+  grid-template-columns:76px minmax(0,1fr);
+  align-items:center;
+  gap:0 13px;
+  min-height:116px;
+  padding:9px;
+}
+.tmdb-search-results .discover-card > img,
+.tmdb-search-results .discover-card > .discover-no-poster {
+  grid-column:1;
+  grid-row:1;
+  width:76px;
+  height:114px;
+  aspect-ratio:2 / 3;
+  object-fit:cover;
+  border-radius:3px;
+}
+.tmdb-search-results .discover-card-info {
+  grid-column:2;
+  grid-row:1;
+  min-width:0;
+  padding:0;
+}
+.tmdb-search-results .discover-card-info strong {
+  white-space:normal;
+  overflow:visible;
+  text-overflow:clip;
+  font-size:1rem;
+}
+.tmdb-search-results .discover-card-info span { margin:4px 0 7px; }
+.tmdb-search-results .discover-card-info button {
+  width:auto;
+  min-width:112px;
+  padding:7px 12px;
+}
+@media (max-width:760px) {
+  .tmdb-search-results { grid-template-columns:1fr; }
 }

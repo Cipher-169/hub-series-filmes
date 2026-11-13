@@ -5,7 +5,7 @@
    CONTROLE DE VERSÃO:
    Sempre que modificar este arquivo incremente HUB_VERSION em +1.
    ===================================================================== */
-const HUB_VERSION = 15;
+const HUB_VERSION = 17;
 window.HUB_VERSION = HUB_VERSION;
 document.getElementById("project-version").textContent = `v${HUB_VERSION}`;
 
@@ -20,7 +20,8 @@ let fbUser     = null;
 let movies     = [];   // catálogo de filmes
 let shows      = [];   // catálogo de séries
 let watching   = [];   // em andamento (filmes + séries)
-let activeItem = null; // item aberto no modal
+let activeItem = null;
+let modalRequestToken = 0; // item aberto no modal
 let showSeasonsCache = new Map(); // cache das temporadas de séries
 let tmdbSearchResults = [];
 const TMDB_WORKER_URL = "https://hub-filmes-series.world-testaocenter790.workers.dev";
@@ -301,11 +302,15 @@ const wideCard = item => {
    ===================================================================== */
 
 async function openItem(id, type, previewData = null) {
-  const item = (type === "movie" ? movies : shows).find(i => i.id === String(id)) || (previewData ? { ...previewData, id:String(id), type, title:previewData.title || "Sem título", cover:previewData.posterUrl, banner:previewData.backdropUrl, status:"plantowatch", score:0 } : null);
+  const requestToken = ++modalRequestToken;
+  const d = $("dlg");
+  // Abra imediatamente: a busca de metadados/notas não deve bloquear a interação.
+  d.innerHTML = `<div class="msg modal-loading"><span class="loading-spinner"></span> Abrindo detalhes…</div>`;
+  if (!d.open) d.showModal();
+  const item = (type === "movie" ? movies : shows).find(i => String(i.id) === String(id)) || (previewData ? { ...previewData, id:String(id), type, title:previewData.title || "Sem título", cover:previewData.posterUrl, banner:previewData.backdropUrl, status:"plantowatch", score:0 } : null);
   if (!item) return;
   const inCatalog = (type === "movie" ? movies : shows).some(i => String(i.id) === String(id));
   activeItem = item;
-  const d = $("dlg");
   const isShow = type === "show";
   // Atualiza metadados antigos com a ficha técnica mais completa do TMDB.
   if (!item.cast?.length || !item.genres?.length) {
@@ -320,10 +325,12 @@ async function openItem(id, type, previewData = null) {
     } catch (error) { console.warn("Não foi possível atualizar a ficha do TMDB", error); }
   }
 
+  if (requestToken !== modalRequestToken) return;
   let note = {};
   if (window.hubFB) {
     try { note = await hubFB.getItemNote(id, type); } catch (e) {}
   }
+  if (requestToken !== modalRequestToken) return;
   const currentStatus = note.status || item.status || "plantowatch";
   const currentScore  = isShow ? (note.scoreOverall ?? item.score ?? 0) : (note.score ?? item.score ?? 0);
 
@@ -843,6 +850,7 @@ document.addEventListener("click", e => {
   if (card && !$("dlg").contains(card)) openItem(card.dataset.id, card.dataset.type);
 });
 
+$("dlg").addEventListener("close", () => { modalRequestToken++; });
 $("dlg").addEventListener("click", e => {
   const dropdown = $("status-dropdown");
   if (dropdown && !dropdown.contains(e.target)) {
