@@ -695,13 +695,18 @@ async function loadCatalog({ sync = false } = {}) {
       rawData = await TraktAuth.cacheGet(cacheKey);
     }
 
+    if (rawData && !["wMovies", "wlMovies", "cMovies", "wShows", "wlShows", "cShows"].every(key => Array.isArray(rawData[key]))) {
+      await TraktAuth.cacheDelete(cacheKey);
+      rawData = null;
+    }
+
     if (!rawData && window.TraktAuth) {
       rawData = await TraktAuth.fetchCatalog(username);
-      const totalRaw = (rawData.wMovies?.length || 0) + (rawData.wlMovies?.length || 0) + (rawData.cMovies?.length || 0) + (rawData.wShows?.length || 0) + (rawData.wlShows?.length || 0) + (rawData.cShows?.length || 0);
+      const totalRaw = ["wMovies", "wlMovies", "cMovies", "wShows", "wlShows", "cShows"]
+        .reduce((total, key) => total + rawData[key].length, 0);
       console.log("Trakt fetchCatalog total itens retornados:", totalRaw, rawData);
-      if (totalRaw > 0) {
-        await TraktAuth.cacheSet(cacheKey, rawData);
-      }
+      // Cacheia inclusive catálogos vazios: uma resposta válida vazia é diferente de falha.
+      await TraktAuth.cacheSet(cacheKey, rawData);
     }
 
     // Busca notas salvas no Firebase
@@ -753,8 +758,8 @@ async function loadCatalog({ sync = false } = {}) {
     }
   } catch (e) {
     console.error("Falha ao carregar do Trakt:", e);
-    statusEl.textContent = `Modo offline / demonstração (${esc(e.message)}).`;
-    if (!movies.length) loadFallbackMock();
+    statusEl.textContent = `Não foi possível carregar o catálogo (${esc(e.message)}). Tente sincronizar novamente.`;
+    console.error("O catálogo de demonstração não será exibido para evitar confusão com dados reais.");
   } finally {
     $("btn-sync").disabled = false;
   }
@@ -816,11 +821,14 @@ function updateTraktConnectionUI() {
    ===================================================================== */
 
 async function init() {
-  // Trata retorno de OAuth PKCE se houver ?code=
+  // Trata retorno de OAuth PKCE sem impedir a inicialização da interface em caso de erro.
   if (window.TraktAuth) {
-    const handled = await TraktAuth.handleCallback();
-    if (handled) {
-      $("sync-status").textContent = "Conexão com Trakt autorizada com sucesso!";
+    try {
+      const handled = await TraktAuth.handleCallback();
+      if (handled) $("sync-status").textContent = "Conexão com Trakt autorizada com sucesso!";
+    } catch (error) {
+      console.error("Falha no retorno OAuth do Trakt:", error);
+      $("sync-status").textContent = error.message || "Não foi possível concluir a conexão com o Trakt.";
     }
   }
 

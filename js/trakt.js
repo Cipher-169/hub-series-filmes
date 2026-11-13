@@ -26,6 +26,8 @@ const REDIRECT_URI = getRedirectUri();
 const LS_TOKEN    = "trakt_token";
 const LS_VERIFIER = "trakt_verifier";
 const LS_EXPIRY   = "trakt_expiry";
+const LS_REFRESH  = "trakt_refresh_token";
+const LS_STATE    = "trakt_oauth_state";
 
 /* =====================================================================
    PKCE — funções criptográficas
@@ -56,7 +58,11 @@ async function _generateChallenge(verifier) {
 async function login() {
   const verifier   = _generateVerifier();
   const challenge  = await _generateChallenge(verifier);
+  const stateBytes = new Uint8Array(24);
+  crypto.getRandomValues(stateBytes);
+  const state = _base64url(stateBytes);
   localStorage.setItem(LS_VERIFIER, verifier);
+  localStorage.setItem(LS_STATE, state);
 
   const redirectUri = getRedirectUri();
   const params = new URLSearchParams({
@@ -65,76 +71,146 @@ async function login() {
     redirect_uri:          redirectUri,
     code_challenge:        challenge,
     code_challenge_method: "S256",
+    state,
   });
 
-  window.location.href = `https://trakt.tv/oauth/authorize?${params}`;
+  window.location.href = `https://auth.trakt.tv/oauth/authorize?${params}`;
 }
 
 /** Troca o código pelo token — chamado ao detectar ?code= na URL */
 async function handleCallback() {
-  const params   = new URLSearchParams(location.search);
-  const code     = params.get("code");
-  const verifier = localStorage.getItem(LS_VERIFIER);
+  const params = new URLSearchParams(location.search);
+  const code = params.get("code");
+  const returnedState = params.get("state");
+  const oauthError = params.get("error");
+  if (!code && !oauthError) return false;
 
-  if (!code || !verifier) return false;
+  const verifier = localStorage.getItem(LS_VERIFIER);
+  const expectedState = localStorage.getItem(LS_STATE);
+  const cleanUrl = () => history.replaceState({}, "", location.pathname + location.hash);
+
+  if (oauthError) {
+    localStorage.removeItem(LS_VERIFIER);
+    localStorage.removeItem(LS_STATE);
+    cleanUrl();
+    throw new Error(`Autorização Trakt não concluída: ${oauthError}`);
+  }
+  if (!code || !verifier || !expectedState || returnedState !== expectedState) {
+    localStorage.removeItem(LS_VERIFIER);
+    localStorage.removeItem(LS_STATE);
+    cleanUrl();
+    throw new Error("Retorno OAuth inválido ou expirado. Tente conectar novamente.");
+  }
 
   const res = await fetch(`${TRAKT_API}/oauth/token`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      code,
-      client_id:     TRAKT_CLIENT_ID,
-      redirect_uri:  getRedirectUri(),
-      code_verifier: verifier,
-      grant_type:    "authorization_code",
+      code, client_id: TRAKT_CLIENT_ID, redirect_uri: getRedirectUri(),
+      code_verifier: verifier, grant_type: "authorization_code",
     }),
   });
-
+  const data = await res.json().catch(() => ({}));
   if (!res.ok) {
-    console.error("Trakt token exchange failed", res.status);
-    return false;
+    cleanUrl();
+    throw new Error(`Falha ao conectar ao Trakt (HTTP ${res.status}): ${data.error_description || data.error || "erro desconhecido"}`);
   }
-
-  const data = await res.json();
-  localStorage.setItem(LS_TOKEN,  data.access_token);
-  localStorage.setItem(LS_EXPIRY, Date.now() + data.expires_in * 1000);
+  _storeTokens(data);
   localStorage.removeItem(LS_VERIFIER);
-
-  /* Limpa o ?code= da URL sem recarregar a página */
-  history.replaceState({}, "", location.pathname);
+  localStorage.removeItem(LS_STATE);
+  cleanUrl();
   return true;
+}
+
+function _storeTokens(data) {
+  if (!data?.access_token || !data?.refresh_token || !Number.isFinite(Number(data.expires_in))) {
+    throw new Error("Resposta de autenticação do Trakt incompleta.");
+  }
+  localStorage.setItem(LS_TOKEN, data.access_token);
+  localStorage.setItem(LS_REFRESH, data.refresh_token);
+  localStorage.setItem(LS_EXPIRY, String(Date.now() + Number(data.expires_in) * 1000));
+}
+
+let _refreshPromise = null;
+async function _refreshAccessToken() {
+  if (_refreshPromise) return _refreshPromise;
+  _refreshPromise = (async () => {
+    const refreshToken = localStorage.getItem(LS_REFRESH);
+    if (!refreshToken) {
+      logout();
+      throw new Error("A sessão Trakt expirou. Conecte sua conta novamente.");
+    }
+    const res = await fetch(`${TRAKT_API}/oauth/token`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refresh_token: refreshToken, client_id: TRAKT_CLIENT_ID, grant_type: "refresh_token", redirect_uri: getRedirectUri() }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      if ([400, 401].includes(res.status)) logout();
+      throw new Error(`Não foi possível renovar a sessão Trakt (HTTP ${res.status}).`);
+    }
+    _storeTokens(data);
+    return data.access_token;
+  })();
+  try { return await _refreshPromise; }
+  finally { _refreshPromise = null; }
 }
 
 /** Faz logout */
 function logout() {
   localStorage.removeItem(LS_TOKEN);
+  localStorage.removeItem(LS_REFRESH);
   localStorage.removeItem(LS_EXPIRY);
+  localStorage.removeItem(LS_VERIFIER);
+  localStorage.removeItem(LS_STATE);
 }
 
 /** Token ainda válido? */
 function isAuthenticated() {
-  const token  = localStorage.getItem(LS_TOKEN);
+  const token = localStorage.getItem(LS_TOKEN);
+  const refreshToken = localStorage.getItem(LS_REFRESH);
   const expiry = Number(localStorage.getItem(LS_EXPIRY) || 0);
-  return !!token && Date.now() < expiry;
+  return !!token && (Date.now() < expiry || !!refreshToken);
 }
 
 /* =====================================================================
    CHAMADAS À API
    ===================================================================== */
 
-async function _request(endpoint) {
+async function _request(endpoint, { retryAuth = true, retry429 = true } = {}) {
   const headers = {
-    "Content-Type":      "application/json",
+    "Content-Type": "application/json",
     "trakt-api-version": "2",
-    "trakt-api-key":     TRAKT_CLIENT_ID,
+    "trakt-api-key": TRAKT_CLIENT_ID,
   };
-  const token = localStorage.getItem(LS_TOKEN);
-  if (token) {
-    headers["Authorization"] = `Bearer ${token}`;
+  let token = localStorage.getItem(LS_TOKEN);
+  const expiry = Number(localStorage.getItem(LS_EXPIRY) || 0);
+  if ((token && expiry <= Date.now() + 60_000) || (!token && localStorage.getItem(LS_REFRESH))) {
+    token = await _refreshAccessToken();
   }
+  if (token) headers.Authorization = `Bearer ${token}`;
 
   const res = await fetch(`${TRAKT_API}${endpoint}`, { headers });
-  if (!res.ok) throw new Error(`Trakt ${res.status}: ${endpoint}`);
+  if (res.status === 401 && token && retryAuth) {
+    // Outra requisição pode já ter renovado o token em paralelo.
+    if (localStorage.getItem(LS_TOKEN) === token) await _refreshAccessToken();
+    return _request(endpoint, { retryAuth: false, retry429 });
+  }
+  if (res.status === 429 && retry429) {
+    const retryAfter = res.headers.get("Retry-After") || "1";
+    const seconds = Number(retryAfter);
+    const delayMs = Number.isFinite(seconds)
+      ? Math.max(1, seconds) * 1000
+      : Math.max(1000, Date.parse(retryAfter) - Date.now());
+    await new Promise(resolve => setTimeout(resolve, delayMs));
+    return _request(endpoint, { retryAuth, retry429: false });
+  }
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(`Trakt HTTP ${res.status}: ${endpoint}${body ? ` — ${body.slice(0, 180)}` : ""}`);
+  }
+  if (res.status === 204) return null;
   return res.json();
 }
 
@@ -164,16 +240,16 @@ async function fetchCatalog(username = TRAKT_OWNER) {
     cShows:   `/users/${username}/collection/shows?extended=full`,
   };
 
-  const [wMovies, wlMovies, cMovies, wShows, wlShows, cShows] = await Promise.all([
-    _request(endpoints.wMovies).catch(e => { console.warn("Trakt wMovies:", e); return []; }),
-    _request(endpoints.wlMovies).catch(e => { console.warn("Trakt wlMovies:", e); return []; }),
-    _request(endpoints.cMovies).catch(e => { console.warn("Trakt cMovies:", e); return []; }),
-    _request(endpoints.wShows).catch(e => { console.warn("Trakt wShows:", e); return []; }),
-    _request(endpoints.wlShows).catch(e => { console.warn("Trakt wlShows:", e); return []; }),
-    _request(endpoints.cShows).catch(e => { console.warn("Trakt cShows:", e); return []; }),
-  ]);
-
-  return { wMovies, wlMovies, cMovies, wShows, wlShows, cShows };
+  const keys = ["wMovies", "wlMovies", "cMovies", "wShows", "wlShows", "cShows"];
+  const results = await Promise.allSettled(keys.map(key => _request(endpoints[key])));
+  const failures = results.flatMap((result, index) => result.status === "rejected"
+    ? [{ collection: keys[index], error: result.reason }] : []);
+  if (failures.length) {
+    const error = new Error(`Não foi possível carregar completamente o catálogo do Trakt (${failures.map(f => f.collection).join(", ")}).`);
+    error.failures = failures;
+    throw error;
+  }
+  return Object.fromEntries(keys.map((key, index) => [key, results[index].value]));
 }
 
 /** Detalhes de uma série (sinopse, etc.) */
