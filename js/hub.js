@@ -5,7 +5,7 @@
    CONTROLE DE VERSÃO:
    Sempre que modificar este arquivo incremente HUB_VERSION em +1.
    ===================================================================== */
-const HUB_VERSION = 14;
+const HUB_VERSION = 15;
 window.HUB_VERSION = HUB_VERSION;
 document.getElementById("project-version").textContent = `v${HUB_VERSION}`;
 
@@ -23,8 +23,6 @@ let watching   = [];   // em andamento (filmes + séries)
 let activeItem = null; // item aberto no modal
 let showSeasonsCache = new Map(); // cache das temporadas de séries
 let tmdbSearchResults = [];
-let discoverLoaded = false;
-let discoverLoading = false;
 const TMDB_WORKER_URL = "https://hub-filmes-series.world-testaocenter790.workers.dev";
 
 /* ---------- Tiers de nota (0–100) ---------- */
@@ -129,31 +127,91 @@ const DISCOVER_CATEGORIES = [
 let discoverView = "home";
 let discoverPage = 1;
 let discoverCache = new Map();
+let discoverRenderToken = 0;
+let searchPage = 1;
+let searchQuery = "";
+let searchType = "multi";
+const DISCOVER_CACHE_TTL = 6 * 60 * 60 * 1000;
+const SEARCH_CACHE_TTL = 30 * 60 * 1000;
+function readApiCache(key, ttl) {
+  try {
+    const raw = localStorage.getItem(`hub_tmdb_${key}`);
+    if (!raw) return null;
+    const entry = JSON.parse(raw);
+    if (!entry || Date.now() - entry.savedAt > ttl) { localStorage.removeItem(`hub_tmdb_${key}`); return null; }
+    return entry.data;
+  } catch { return null; }
+}
+function writeApiCache(key, data) {
+  try { localStorage.setItem(`hub_tmdb_${key}`, JSON.stringify({ savedAt: Date.now(), data })); }
+  catch (error) { console.warn("Cache local indisponível; usando apenas cache do Worker.", error); }
+}
+async function fetchCachedJson(url, cacheKey, ttl) {
+  const cached = readApiCache(cacheKey, ttl);
+  if (cached) return cached;
+  const response = await fetch(url);
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+  writeApiCache(cacheKey, data);
+  return data;
+}
 async function renderDiscover() {
   const view = $("view");
+  const token = ++discoverRenderToken;
   if (discoverView === "home") {
     view.innerHTML = `<section class="discover-head"><span class="eyebrow">EXPLORE O UNIVERSO DO CINEMA</span><h2>Encontre sua próxima história.</h2><p>Escolha uma categoria ou pesquise diretamente no catálogo.</p>
-      <form id="tmdb-search-form" class="catalog-search-form discover-search"><select id="tmdb-search-type" aria-label="Tipo de título"><option value="multi">Tudo</option><option value="movie">Filmes</option><option value="tv">Séries</option></select><input id="tmdb-search-input" type="search" minlength="2" placeholder="Qual título você procura?" autocomplete="off" required><button type="submit" id="tmdb-search-submit">Buscar</button></form><p class="search-hint" id="tmdb-search-status">Pesquise no TMDB ou escolha uma das coleções abaixo.</p><div id="tmdb-search-results" class="tmdb-search-results"></div></section>
+      <form id="tmdb-search-form" class="catalog-search-form discover-search"><select id="tmdb-search-type" aria-label="Tipo de título"><option value="multi">Tudo</option><option value="movie">Filmes</option><option value="tv">Séries</option></select><input id="tmdb-search-input" type="search" minlength="2" placeholder="Qual título você procura?" autocomplete="off" required><button type="submit" id="tmdb-search-submit">Buscar</button></form><p class="search-hint" id="tmdb-search-status">Pesquise no TMDB ou escolha uma das coleções abaixo.</p><div class="search-result-actions" id="search-result-actions" hidden><button type="button" id="tmdb-search-clear" class="search-clear">Limpar pesquisa ×</button><div class="search-pagination" id="search-pagination"></div></div><div id="tmdb-search-results" class="tmdb-search-results"></div></section>
       <section class="discover-category-grid">${DISCOVER_CATEGORIES.map(c=>`<button class="discover-category" type="button" data-discover-category="${c.id}"><span>${c.icon}</span><strong>${esc(c.title)}</strong><small>Explorar coleção</small><b>→</b></button>`).join("")}</section>`;
     bindDiscoverSearch(); return;
   }
   const category = DISCOVER_CATEGORIES.find(c=>c.id===discoverView);
   if (!category) { discoverView="home"; return renderDiscover(); }
   view.innerHTML = `<div class="discover-category-top"><button type="button" class="text-back" data-discover-home>← Todas as categorias</button><span class="eyebrow">DESCOBRIR</span><h2>${esc(category.title)}</h2><p>Explore títulos selecionados pelo catálogo do TMDB.</p></div><div id="discover-results" class="discover-grid discover-grid-large"><div class="msg">Carregando títulos…</div></div><div class="discover-pagination"><button type="button" data-discover-page="prev" ${discoverPage<=1?"disabled":""}>← Anterior</button><span>Página ${discoverPage}</span><button type="button" data-discover-page="next">Próxima →</button></div>`;
-  const target=$("discover-results"), key=`${discoverView}:${discoverPage}`;
+  const key=`${discoverView}:${discoverPage}`;
   try {
     let data=discoverCache.get(key);
-    if(!data){const url=new URL(`${TMDB_WORKER_URL}${category.path}`,location.href);if(category.id!=="upcoming")url.searchParams.set("page",discoverPage);else url.searchParams.set("page",discoverPage);const r=await fetch(url);if(!r.ok)throw new Error(`TMDB HTTP ${r.status}`);data=await r.json();discoverCache.set(key,data);}
-    if($("discover-results")) target.innerHTML=(data.results||[]).map(discoverCard).join("")||`<div class="msg">Nenhum título encontrado.</div>`;
-  } catch(e){if(target)target.innerHTML=`<div class="msg err">Não foi possível carregar esta coleção: ${esc(e.message)}.</div>`;}
+    if(!data){const url=new URL(`${TMDB_WORKER_URL}${category.path}`,location.href);url.searchParams.set("page",discoverPage);data=await fetchCachedJson(url.toString(),`discover_${key}`,DISCOVER_CACHE_TTL);discoverCache.set(key,data);}
+    if(token!==discoverRenderToken || tab!=="descobrir" || discoverView!==category.id) return;
+    const target=$("discover-results");
+    if(target) target.innerHTML=(data.results||[]).map(discoverCard).join("")||`<div class="msg">Nenhum título encontrado.</div>`;
+  } catch(e){if(token===discoverRenderToken){const target=$("discover-results");if(target)target.innerHTML=`<div class="msg err">Não foi possível carregar esta coleção: ${esc(e.message)}.</div><button type="button" class="discover-retry" data-discover-retry>Tentar novamente</button>`;}}
 }
 function discoverCard(item) {
   const type=item.mediaType==="tv"?"show":"movie", exists=[...movies,...shows].some(x=>x.type===type&&String(x.id)===String(item.id));
   const poster=item.posterUrl?`<img src="${esc(item.posterUrl)}" alt="Pôster de ${esc(item.title)}" loading="lazy">`:`<div class="discover-no-poster">Sem pôster</div>`;
   return `<article class="discover-card" tabindex="0" aria-label="Ver detalhes de ${esc(item.title)}" data-preview-id="${esc(item.id)}" data-preview-type="${item.mediaType}">${poster}<div class="discover-card-info"><strong>${esc(item.title)}</strong><span>${item.year||"Ano desconhecido"} · ${type==="show"?"Série":"Filme"}</span><span class="discover-rating">★ ${Number(item.voteAverage||0).toFixed(1)}</span><button type="button" data-add-tmdb="${esc(item.id)}" data-media-type="${item.mediaType}" ${exists||!fbUser?"disabled":""}>${exists?"Na biblioteca":fbUser?"+ Adicionar":"Entre para adicionar"}</button></div></article>`;
 }
+function renderSearchPagination(totalPages=1) {
+  const holder=$("search-pagination");
+  if(!holder) return;
+  holder.innerHTML = `<button type="button" data-search-page="prev" ${searchPage<=1?"disabled":""}>← Anterior</button><span>Página ${searchPage} de ${Math.max(1,totalPages)}</span><button type="button" data-search-page="next" ${searchPage>=totalPages?"disabled":""}>Próxima →</button>`;
+}
+async function runDiscoverSearch(page=1) {
+  const status=$("tmdb-search-status"), out=$("tmdb-search-results"), submit=$("tmdb-search-submit");
+  if(!status||!out) return;
+  searchPage=page; searchQuery=$("tmdb-search-input")?.value.trim()||searchQuery; searchType=$("tmdb-search-type")?.value||searchType;
+  if(searchQuery.length<2){status.textContent="Digite pelo menos 2 caracteres.";return;}
+  status.textContent="Buscando no TMDB…"; out.innerHTML=""; if(submit)submit.disabled=true;
+  const actions=$("search-result-actions"); if(actions)actions.hidden=false;
+  try {
+    const url=`${TMDB_WORKER_URL}/api/tmdb/search/${searchType}?query=${encodeURIComponent(searchQuery)}&page=${searchPage}`;
+    const cacheKey=`search_${searchType}_${searchQuery.toLocaleLowerCase()}_${searchPage}`;
+    const data=await fetchCachedJson(url,cacheKey,SEARCH_CACHE_TTL);
+    tmdbSearchResults=data.results||[];
+    status.textContent=tmdbSearchResults.length?`${data.total_results||tmdbSearchResults.length} resultado(s) encontrados.`:"Nenhum resultado encontrado.";
+    out.innerHTML=tmdbSearchResults.slice(0,20).map(discoverCard).join("")||`<div class="msg">Nenhum resultado nesta página.</div>`;
+    renderSearchPagination(Math.min(20,Number(data.total_pages)||1));
+  } catch(err){status.textContent=`Não foi possível pesquisar: ${err.message}`;}
+  finally{if(submit)submit.disabled=false;}
+}
 function bindDiscoverSearch(){
-  $("tmdb-search-form")?.addEventListener("submit",async e=>{e.preventDefault();const q=$("tmdb-search-input").value.trim(),type=$("tmdb-search-type").value,status=$("tmdb-search-status"),out=$("tmdb-search-results");if(q.length<2){status.textContent="Digite pelo menos 2 caracteres.";return;}status.textContent="Buscando no TMDB…";out.innerHTML="";$("tmdb-search-submit").disabled=true;try{const r=await fetch(`${TMDB_WORKER_URL}/api/tmdb/search/${type}?query=${encodeURIComponent(q)}`),d=await r.json();if(!r.ok)throw new Error(d.error||`TMDB HTTP ${r.status}`);tmdbSearchResults=d.results||[];status.textContent=tmdbSearchResults.length?`${d.totalResults||tmdbSearchResults.length} resultado(s) encontrado(s).`:"Nenhum resultado encontrado.";out.innerHTML=tmdbSearchResults.map(discoverCard).join("");}catch(err){status.textContent=`Não foi possível pesquisar: ${err.message}`;}finally{$("tmdb-search-submit").disabled=false;}});
+  $("tmdb-search-form")?.addEventListener("submit",async e=>{e.preventDefault();searchPage=1;await runDiscoverSearch(1);});
+  $("tmdb-search-clear")?.addEventListener("click",()=>{
+    const input=$("tmdb-search-input"), status=$("tmdb-search-status"), out=$("tmdb-search-results"), actions=$("search-result-actions");
+    if(input)input.value=""; if(out)out.innerHTML=""; if(actions)actions.hidden=true;
+    if(status)status.textContent="Pesquise no TMDB ou escolha uma das coleções abaixo.";
+    searchQuery="";searchPage=1;tmdbSearchResults=[];input?.focus();
+  });
 }
 async function openTmdbPreview(id, mediaType){
   const type=mediaType==="tv"?"show":"movie";
@@ -727,6 +785,7 @@ function populateYears() {
    ===================================================================== */
 
 function render() {
+  document.body.classList.toggle("discover-mode", tab === "descobrir");
   const showFilters = tab === "filmes" || tab === "series";
   $("filters").classList.toggle("hidden", !showFilters);
   $("stats-tab").classList.toggle("hidden", !fbUser);
@@ -823,8 +882,9 @@ document.addEventListener("click",async e=>{
   const cat=e.target.closest("[data-discover-category]");if(cat){discoverView=cat.dataset.discoverCategory;discoverPage=1;renderDiscover();return;}
   if(e.target.closest("[data-discover-home]")){discoverView="home";renderDiscover();return;}
   const page=e.target.closest("[data-discover-page]");if(page){discoverPage=Math.max(1,discoverPage+(page.dataset.discoverPage==="next"?1:-1));renderDiscover();return;}
+  const searchPageButton=e.target.closest("[data-search-page]");if(searchPageButton){runDiscoverSearch(Math.max(1,searchPage+(searchPageButton.dataset.searchPage==="next"?1:-1)));return;}
+  if(e.target.closest("[data-discover-retry]")){discoverCache.delete(`${discoverView}:${discoverPage}`);renderDiscover();return;}
   const preview=e.target.closest("[data-preview-id]");if(preview&&!e.target.closest("[data-add-tmdb]")){openTmdbPreview(preview.dataset.previewId,preview.dataset.previewType);return;}
-  if(e.target.closest("#discover-retry")){discoverLoaded=false;loadDiscoverSections();return;}
   const button=e.target.closest("[data-add-tmdb]"); if(!button)return;
   if(!fbUser||!window.hubFB){alert("Entre com sua conta Google para adicionar títulos.");return;}
   const id=button.dataset.addTmdb, mediaType=button.dataset.mediaType||tmdbSearchResults.find(x=>String(x.id)===id)?.mediaType; if(!mediaType)return;

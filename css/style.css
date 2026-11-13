@@ -1532,3 +1532,32 @@ dialog::backdrop { background: rgba(8,7,6,.8); backdrop-filter: blur(7px); }
 .diary-edit-form textarea { min-height:100px; resize:vertical; }
 .diary-edit-form .diary-actions button { padding:7px 12px; border:1px solid var(--line); border-radius:4px; background:transparent; color:var(--text); cursor:pointer; }
 .diary-edit-form .diary-actions button[type="submit"] { border-color:var(--gold); background:var(--gold); color:#211a10; }
+
+/* V15 — Descobrir: cabeçalho compacto, busca paginada e limpeza */
+body.discover-mode .hero {
+  min-height: 112px;
+  height: 112px;
+  background-image: none !important;
+  background-color: #171613;
+  border-bottom: 1px solid var(--line);
+}
+body.discover-mode .hero::before { display:none; }
+body.discover-mode .hero-in { display:none; }
+body.discover-mode .top { min-height:112px; padding-top:14px; padding-bottom:14px; background:#171613; }
+.discover-head { margin-top:20px; padding:22px 24px; }
+.discover-head h2 { font-size:clamp(1.55rem,3vw,2.15rem); }
+.discover-search { max-width:100%; }
+.search-result-actions { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-top:12px; }
+.search-result-actions[hidden] { display:none; }
+.search-clear { border:1px solid var(--line-strong); border-radius:4px; background:transparent; color:var(--muted); padding:7px 11px; cursor:pointer; font-size:.72rem; }
+.search-clear:hover { color:var(--text); border-color:var(--gold); }
+.search-pagination { display:flex; align-items:center; gap:10px; color:var(--muted); font-size:.72rem; }
+.search-pagination button { border:1px solid var(--line); border-radius:4px; padding:6px 10px; background:transparent; color:var(--text); cursor:pointer; }
+.search-pagination button:disabled { opacity:.35; cursor:default; }
+.tmdb-search-results { grid-template-columns:repeat(2,minmax(0,1fr)); align-items:start; }
+@media(max-width:760px) {
+  body.discover-mode .hero, body.discover-mode .top { min-height:94px; height:94px; }
+  body.discover-mode .top { padding:12px 18px; }
+  .tmdb-search-results { grid-template-columns:1fr; }
+  .search-result-actions { align-items:flex-start; flex-direction:column; }
+}
