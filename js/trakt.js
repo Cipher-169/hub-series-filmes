@@ -396,30 +396,47 @@ function transformCatalog({ wMovies = [], wlMovies = [], cMovies = [], wShows = 
 }
 
 /* =====================================================================
-   IMAGENS VIA TMDB (opcional — precisa de API key)
-   Chame enrichWithPosters(items, tmdbApiKey) para adicionar capas.
+   IMAGENS VIA TMDB — Cloudflare Worker + cache local
+   O token do TMDB fica exclusivamente como Secret no Cloudflare Worker.
    ===================================================================== */
 
-/**
- * Busca o pôster de um item via TMDB e preenche .cover e .banner.
- * Requer uma TMDB API key (gratuita em themoviedb.org).
- */
-async function enrichWithPosters(items, tmdbApiKey) {
-  if (!tmdbApiKey) return;
-  const BASE = "https://api.themoviedb.org/3";
-  const IMG  = "https://image.tmdb.org/t/p";
+const TMDB_WORKER_URL = "https://hub-filmes-series.world-testaocenter790.workers.dev";
 
-  await Promise.all(items.map(async item => {
-    if (!item.tmdbId || (item.cover && item.banner)) return;
-    try {
-      const path  = item.type === "movie" ? `movie/${item.tmdbId}` : `tv/${item.tmdbId}`;
-      const data  = await fetch(`${BASE}/${path}?api_key=${tmdbApiKey}`).then(r => r.json());
-      const poster = data.poster_path   ?? null;
-      const backdrop = data.backdrop_path ?? null;
-      item.cover  = poster   ? `${IMG}/w500${poster}`   : null;
-      item.banner = backdrop ? `${IMG}/w1280${backdrop}` : null;
-    } catch { /* ignora falhas pontuais */ }
-  }));
+/**
+ * Enriquece filmes e séries com pôster e imagem de fundo do TMDB.
+ * Usa o cache IndexedDB existente e limita a concorrência para não disparar
+ * dezenas de requisições simultâneas ao Worker.
+ */
+async function enrichWithPosters(items = []) {
+  const queue = items.filter(item => item?.tmdbId && !(item.cover && item.banner));
+  let cursor = 0;
+
+  async function worker() {
+    while (cursor < queue.length) {
+      const item = queue[cursor++];
+      const kind = item.type === "movie" ? "movie" : "tv";
+      const cacheKey = `tmdb_images_${kind}_${item.tmdbId}`;
+
+      try {
+        let images = await cacheGet(cacheKey);
+        if (!images) {
+          const response = await fetch(`${TMDB_WORKER_URL}/api/tmdb/${kind}/${encodeURIComponent(item.tmdbId)}`);
+          if (!response.ok) throw new Error(`TMDB Worker ${response.status}`);
+          images = await response.json();
+          await cacheSet(cacheKey, images);
+        }
+
+        item.cover = item.cover || images.posterUrl || null;
+        item.banner = item.banner || images.backdropUrl || null;
+      } catch (error) {
+        console.warn(`Não foi possível carregar imagens de ${item.title}:`, error);
+      }
+    }
+  }
+
+  const concurrency = Math.min(6, queue.length);
+  await Promise.all(Array.from({ length: concurrency }, () => worker()));
+  return items;
 }
 
 /* =====================================================================

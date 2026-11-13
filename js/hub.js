@@ -5,7 +5,7 @@
    CONTROLE DE VERSÃO:
    Sempre que modificar este arquivo incremente HUB_VERSION em +1.
    ===================================================================== */
-const HUB_VERSION = 9;
+const HUB_VERSION = 10;
 window.HUB_VERSION = HUB_VERSION;
 document.getElementById("project-version").textContent = `v${HUB_VERSION}`;
 
@@ -665,6 +665,12 @@ async function loadCatalog({ sync = false } = {}) {
 
     if (rawData && window.TraktAuth) {
       const transformed = TraktAuth.transformCatalog(rawData, mergedNotes);
+
+      // Enriquecimento visual independente: o catálogo e os dados pessoais
+      // continuam vindo do Trakt/Firebase; as artes são obtidas pelo Worker.
+      statusEl.textContent = "Carregando pôsteres e imagens…";
+      await TraktAuth.enrichWithPosters([...transformed.movies, ...transformed.shows]);
+
       movies   = transformed.movies;
       shows    = transformed.shows;
       watching = transformed.watching;

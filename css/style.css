@@ -1345,3 +1345,23 @@ dialog::backdrop { background: rgba(8,7,6,.8); backdrop-filter: blur(7px); }
 @media (prefers-reduced-motion: reduce) {
   *,*::before,*::after { scroll-behavior: auto !important; transition: none !important; animation: none !important; }
 }
+
+
+/* Créditos obrigatórios da fonte de imagens TMDB */
+.tmdb-credits {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 22px 20px 30px;
+  color: var(--muted, #a9a092);
+  font-size: .72rem;
+  text-align: left;
+  opacity: .82;
+}
+.tmdb-credits a { display: inline-flex; flex: 0 0 auto; }
+.tmdb-credits img { display: block; width: 34px; height: 34px; object-fit: contain; }
+.tmdb-credits p { max-width: 360px; margin: 0; line-height: 1.5; }
+@media (max-width: 520px) {
+  .tmdb-credits { padding: 18px 16px 24px; font-size: .68rem; }
+}
