@@ -4,27 +4,23 @@
    ============================================================ */
 
 /* ---------- Tokens de design ---------- */
- 
 
 /* ---------- Reset ---------- */
 *, *::before, *::after { box-sizing: border-box }
 html { scroll-behavior: smooth; scroll-padding-top: 24px ;}
 body {
   margin: 0;
-  
-  
+
   font: 16px/1.5 var(--sans);
-  
+
 }
 button, input, select { font: inherit; color: var(--text); cursor: pointer }
 input { cursor: text }
 
-
-
 /* ---------- Hero ---------- */
 .hero {
   position: relative;
-  
+
   display: flex;
   align-items: flex-end;
   background: #11182a center 35% / cover no-repeat;
@@ -34,7 +30,7 @@ input { cursor: text }
   content: "";
   position: absolute;
   inset: 0;
-  
+
 }
 
 /* Topbar dentro do hero */
@@ -45,7 +41,7 @@ input { cursor: text }
   justify-content: space-between;
   align-items: center;
   gap: 12px;
-  
+
   flex-wrap: wrap;
   z-index: 10;
 }
@@ -55,7 +51,7 @@ input { cursor: text }
   text-shadow: 0 2px 18px #0008;
   display: flex;
   align-items: center;
-  
+
   flex-wrap: wrap;
 }
 .brand i {  font-style: normal ;}
@@ -63,12 +59,7 @@ input { cursor: text }
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  
-  
-  
-  
-  
-  
+
   font: 500 .78rem var(--sans);
   text-decoration: none;
   vertical-align: middle;
@@ -79,13 +70,10 @@ input { cursor: text }
   display: inline-flex;
   align-items: center;
   margin-left: 4px;
-  
-  
-  
-  
+
   font: 500 .72rem var(--sans);
   vertical-align: middle;
-  
+
 }
 .who { display: flex; align-items: center;  flex-wrap: wrap ;}
 .profile-chip {
@@ -113,60 +101,42 @@ input { cursor: text }
   box-shadow: 0 8px 28px rgba(0,0,0,.12);
   font-size: .85rem;
   white-space: nowrap;
-  
-}
 
+}
 
 /* Conteúdo hero */
 .hero-in {
   position: relative;
-  
-  
+
 }
 .hero-in small {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  
-  
-  
-  
+
   backdrop-filter: blur(10px);
-  
-  
-  
+
 }
 .hero-in h1 {
-  
-  
-  
+
   text-wrap: balance;
 }
 .hero-in p {   margin-bottom: 20px ;}
 .go {
-  
-  
-  
-  
-  
-  
-  
+
   transition: transform .2s, box-shadow .2s, background .2s;
 }
 
-
 /* ---------- Shell ---------- */
 .wrap {
-  
+
   margin: 0 auto;
-  
+
 }
 
 /* Status de sync */
 .sync-status {
-  
-  
-  
+
   min-height: 1.3em;
 }
 
@@ -177,11 +147,7 @@ input { cursor: text }
   justify-content: space-between;
   gap: 14px;
   flex-wrap: wrap;
-  
-  
-  
-  
-  
+
 }
 .trakt-connect-info { display: grid; gap: 3px; min-width: 0 }
 
@@ -197,12 +163,11 @@ input { cursor: text }
   transition: .18s;
 }
 
-
 .trakt-connect-actions button.primary:hover {
   background: #ffa17f;
 }
 .trakt-connect-actions button:disabled {
-  
+
   cursor: not-allowed;
   border-color: var(--line) !important;
 }
@@ -226,111 +191,82 @@ input { cursor: text }
 /* ---------- Tabs ---------- */
 .tabs {
   position: sticky;
-  
+
   z-index: 5;
   display: flex;
-  
-  
-  
-  
-  
-  
-  
-  
+
   overflow-x: auto;
   scrollbar-width: thin;
 }
 .tabs button {
   position: relative;
   border: 0;
-  
-  
+
   background: transparent;
-  
+
   white-space: nowrap;
   transition: color .2s, background .2s;
 }
 
-
 .tabs button[aria-selected=true]::after {
   content: "";
   position: absolute;
-    
-  
+
   border-radius: 2px;
-  
+
 }
 
 /* ---------- Barra de filtros ---------- */
 .bar {
   display: flex;
-  
+
   flex-wrap: wrap;
-  
-  
-  
-  
-  
+
 }
 .bar input, .bar select {
-  
-  
-  
-  
+
   padding: 8px 13px;
   transition: border-color .2s;
 }
 .bar input { flex: 1; min-width: 190px }
 
-
 /* ---------- Tipografia de seção ---------- */
-
-
-
 
 /* ---------- Grid de cards (poster 2:3) ---------- */
 .grid {
   display: grid;
-  
-  
+
 }
 .poster {
   position: relative;
   display: block;
   width: 100%;
   padding: 0;
-  
-  
+
   overflow: hidden;
   aspect-ratio: 2/3;
-  
+
   text-align: left;
-  
-  
+
 }
 
 .poster img { width: 100%; height: 100%; object-fit: cover; display: block }
 .poster .cap {
   position: absolute;
   inset: auto 0 0;
-  
-  
+
   font-size: .88rem;
   line-height: 1.25;
 }
 .poster .cap b { display: block; font-size: .93rem; letter-spacing: -.01em ;}
 
-
 /* Badge de nota / status */
 .badge {
   display: inline-block;
   font-weight: 600;
-  
-  
-  
-  
+
   white-space: nowrap;
-  
+
 }
 .badge small {  font-weight: 400; margin-left: 5px ;}
 
@@ -342,64 +278,50 @@ input { cursor: text }
 .wides {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(min(100%, 330px), 1fr));
-  
+
 }
 .wide {
   display: flex;
-  
-  
-  
-  
-  
-  
+
   background: #1a1f33 center / cover;
   position: relative;
   overflow: hidden;
-  
+
   text-align: left;
-  
+
 }
 
 .wide::before {
   content: "";
   position: absolute;
   inset: 0;
-  
+
 }
 .wide > * { position: relative }
 .wide img {  aspect-ratio: 2/3; object-fit: cover;   box-shadow: 0 6px 20px #000a ;}
 .wide b {  display: block; letter-spacing: -.02em ;}
 .wide .meta { font-size: .85rem ;}
 
-
 /* ---------- Estado vazio / mensagem ---------- */
 .msg {
-  
-  text-align: center;
-  
-  
-  
-  
-}
 
+  text-align: center;
+
+}
 
 /* ---------- Modal (dialog) ---------- */
 dialog {
-  
-  
+
   overflow: auto;
-  
+
   color: var(--text);
-  
-  
+
   padding: 0;
-  
+
 }
 
-
 .dh {
-  
-  
+
   display: flex;
   flex-direction: column;
   justify-content: flex-end;
@@ -410,51 +332,41 @@ dialog {
   content: "";
   position: absolute;
   inset: 0;
-  
+
 }
 .dh > * { position: relative }
 .dh h2 { margin: 0 0 4px; font: 600 1.72rem var(--serif) ;}
 .dx {
   position: absolute !important;
-   
-  
-  
-  
+
   padding: 5px 14px;
   transition: border-color .2s;
 }
 
-
-
 /* Abas internas do dialog */
 .detail-tabs {
   display: flex;
-  
+
   flex-wrap: wrap;
   margin: 0 0 18px;
-  
-  
-  
-  
+
 }
 .detail-tabs button {
   border: 0;
-  
-  
+
   background: transparent;
-  
+
   transition: background .2s, color .2s;
 }
-
 
 /* Formulário de diário */
 .diary-intro {  font-size: .9rem; margin: 0 0 14px ;}
 .diary-form {
   display: grid;
   grid-template-columns: 110px 1fr;
-  
+
   margin: 0 0 20px;
-  
+
   border: 1px solid var(--line);
   border-radius: 13px;
   background: rgba(17,24,39,.55);
@@ -482,7 +394,7 @@ dialog {
 }
 .diary-list { display: grid; gap: 10px }
 .diary-entry {
-  
+
   border: 1px solid var(--line);
   border-radius: 12px;
   background: rgba(17,24,39,.55);
@@ -500,7 +412,7 @@ dialog {
 .diary-actions button {
   background: transparent;
   border: 1px solid var(--line);
-  
+
   padding: 5px 10px;
   color: var(--muted);
   font-size: .82rem;
@@ -512,14 +424,13 @@ dialog {
 .stats-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  
-  
+
 }
 .stat-card {
-  
+
   border: 1px solid var(--line);
   border-radius: 14px;
-  
+
   min-width: 0;
 }
 .stat-card small { display: block;  }
@@ -534,7 +445,7 @@ dialog {
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: 14px;
-  
+
   min-width: 0;
 }
 .stats-panel h3 {  margin: 0 0 14px ;}
@@ -547,7 +458,7 @@ dialog {
   flex-direction: column;
   justify-content: flex-end;
   padding: 16px 12px 55px;
-  
+
   position: relative;
   overflow: hidden;
 }
@@ -566,7 +477,7 @@ dialog {
 }
 .poster-fallback b {
   font: 600 .98rem/1.25 var(--serif);
-  
+
   display: -webkit-box;
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
@@ -594,9 +505,9 @@ dialog {
   display: flex;
   align-items: center;
   gap: 8px;
-  
+
   border: 1px solid var(--line);
-  
+
   padding: 8px 12px;
   margin: 14px 0;
   flex-wrap: wrap;
@@ -628,16 +539,16 @@ dialog {
   border: 1px solid var(--line);
   border-radius: 14px;
   background: rgba(17,24,39,.65);
-  
+
 }
 .season-header {
-  
+
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 12px;
   cursor: pointer;
-  
+
   user-select: none;
 }
 
@@ -646,7 +557,7 @@ dialog {
 .season-progress-bar {
   width: 90px;
   height: 6px;
-  
+
   border-radius: 99px;
   overflow: hidden;
 }
@@ -671,22 +582,17 @@ dialog {
 }
 .ep-btn:hover { border-color: var(--sun); color: var(--text) }
 .ep-btn.watched {
-  
-  
-  
+
   font-weight: 600;
 }
 
 /* Prompt de avaliação de temporada concluída */
 .season-score-prompt {
-  
-  
-  
+
   padding: 12px 14px;
-  
+
   font-size: .85rem;
 }
-
 
 /* ---------- Utilitários ---------- */
 .hidden { display: none }
@@ -694,30 +600,21 @@ button { -webkit-tap-highlight-color: transparent }
 
 /* ---------- Responsivo ---------- */
 @media (max-width: 760px) {
-  
-  
-  
-  
-  
+
   .tabs { margin-inline: -2px ;}
   .tabs button { padding-inline: 13px }
 }
 @media (max-width: 520px) {
   .top {  flex-direction: column ;}
   .who {  flex-wrap: wrap ;}
-  
-  
+
   .wides { grid-template-columns: 1fr }
-  
-  
-  
-  
+
   .diary-entry-head { align-items: flex-start; flex-direction: column }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; animation: none !important }
 }
-
 
 /* ============================================================
    ARQUIVO — DIREÇÃO VISUAL EDITORIAL / CINEMATOGRÁFICA
@@ -725,75 +622,45 @@ button { -webkit-tap-highlight-color: transparent }
    do projeto original são preservados.
    ============================================================ */
 
-
-
 button, input, select { font-family: var(--sans); }
 
 :focus-visible { outline-color: var(--gold); }
 
 /* Abertura */
 .hero {
-  
-  align-items: flex-end;
-  
-  
-  background-size: cover;
-  
-}
 
+  align-items: flex-end;
+
+  background-size: cover;
+
+}
 
 .brand {
   font: 600 1.16rem/1.2 var(--serif);
   letter-spacing: -.035em;
-  
-  
+
 }
 .brand i {  font-style: italic; }
 .project-version {
-  
-  
-  
-  
-  
-  
+
   text-transform: uppercase;
 }
 .trakt-profile-link {
-  
-  
-  
-  
-  
-  
-  
+
   letter-spacing: .04em;
 }
-
-
 
 .profile-chip { padding: 6px 11px; }
 
 .who button { padding: 6px 12px; }
 
-
-
 .hero-in h1 {
-  
-  
-  
-  
+
   text-wrap: balance;
-  
+
 }
 
-
-
-
 /* Conteúdo e conexão */
-
-
-
-
 
 .trakt-connect-actions button,
 .trakt-connect-actions button.primary {
@@ -806,22 +673,13 @@ button, input, select { font-family: var(--sans); }
   letter-spacing: .04em;
 }
 
-
-
 /* Navegação: linha editorial */
 
-
-
-
 .tabs button[aria-selected=true]::after {
-    
-  
+
   border-radius: 0;
-  
+
 }
-
-
-
 
 /* Hierarquia tipográfica */
 
@@ -830,81 +688,39 @@ h2 .meta {    letter-spacing: .08em; }
 
 /* Coleção de pôsteres */
 
-
-
 .poster .cap {
-  
-  
+
   font-size: .8rem;
 }
 .poster .cap b {  letter-spacing: 0; }
-
-
-
-
 
 .poster-fallback b { font-family: var(--serif); }
 
 /* Em andamento */
 
-
-
-
 .wide img {  border-color: rgba(226,211,184,.2); }
-
 
 .wide .pb i { background: var(--gold); }
 
-
 /* Mensagens e diálogos */
-
-
-
-
-
 
 .dh h2 { font-family: var(--serif); }
 .dx {
-  
+
   border-color: rgba(226,211,184,.3);
-  
+
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 .stat-card strong {  font-family: var(--serif); font-size: 2rem; }
 .stats-panel h3 { font-family: var(--serif);  }
 
-
-
 @media (max-width: 520px) {
-  
-  
+
   .profile-chip { min-height: 32px; }
   .who button { min-height: 32px; padding: 5px 9px; font-size: .7rem; }
-  
-  
-  
-  
+
   .tabs {  overflow-x: auto; }
-  
-  
-  
+
 }
 
 /* ============================================================
@@ -1346,7 +1162,6 @@ dialog::backdrop { background: rgba(8,7,6,.8); backdrop-filter: blur(7px); }
   *,*::before,*::after { scroll-behavior: auto !important; transition: none !important; animation: none !important; }
 }
 
-
 /* Créditos obrigatórios da fonte de imagens TMDB */
 .tmdb-credits {
   display: flex;
@@ -1364,4 +1179,114 @@ dialog::backdrop { background: rgba(8,7,6,.8); backdrop-filter: blur(7px); }
 .tmdb-credits p { max-width: 360px; margin: 0; line-height: 1.5; }
 @media (max-width: 520px) {
   .tmdb-credits { padding: 18px 16px 24px; font-size: .68rem; }
+}
+
+
+/* ============================================================
+   HERO — contraste suave e título sem cortes
+   Ajuste consolidado sobre as regras editoriais anteriores.
+   ============================================================ */
+.hero {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  min-height: clamp(470px, 65vh, 700px);
+  height: auto;
+  padding-top: 110px;
+  background-color: #29241c;
+  background-position: center 32%;
+  background-size: cover;
+  border-bottom: 1px solid rgba(231, 216, 190, .11);
+  overflow: visible;
+}
+.hero::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(0deg, var(--bg) 0%, rgba(23, 22, 19, .72) 5%, rgba(23, 22, 19, .18) 24%, transparent 48%),
+    linear-gradient(90deg, rgba(17, 16, 13, .48) 0%, rgba(17, 16, 13, .25) 35%, transparent 72%);
+}
+.hero-in {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-end;
+  width: 100%;
+  max-width: 1000px;
+  min-width: 0;
+  padding: 0 clamp(22px, 5.2vw, 78px) 58px;
+  overflow: visible;
+}
+.hero-in small {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  width: fit-content;
+  max-width: 100%;
+  margin: 0 0 4px;
+  padding: 5px 10px;
+  border: 0;
+  border-left: 2px solid var(--gold);
+  border-radius: 0;
+  background: rgba(23, 22, 19, .42);
+  color: #ead4ad;
+  font-size: .72rem;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  backdrop-filter: blur(10px);
+}
+.hero-in h1 {
+  width: 100%;
+  max-width: 820px;
+  margin: 13px 0 12px;
+  font: 600 clamp(2.7rem, 6.8vw, 6.3rem)/1.05 var(--serif);
+  letter-spacing: -.045em;
+  text-wrap: balance;
+  overflow-wrap: anywhere;
+  word-break: normal;
+  text-shadow: 0 5px 32px rgba(0, 0, 0, .4);
+}
+.hero-in p {
+  margin: 0 0 22px;
+  color: rgba(240, 233, 220, .9);
+  font-size: .9rem;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+@media (max-width: 760px) {
+  .hero {
+    min-height: 510px;
+    padding-top: 125px;
+    background-position: 58% center;
+  }
+  .hero-in { padding: 0 22px 40px; }
+  .hero-in h1 {
+    font-size: clamp(2.7rem, 10vw, 4.5rem);
+    line-height: 1.06;
+  }
+}
+@media (max-width: 520px) {
+  .hero {
+    min-height: 540px;
+    padding-top: 150px;
+  }
+  .hero-in { padding: 0 20px 36px; }
+  .hero-in small {
+    font-size: .65rem;
+    letter-spacing: .1em;
+  }
+  .hero-in h1 {
+    font-size: clamp(2.45rem, 11vw, 2.9rem);
+    line-height: 1.08;
+  }
+  .hero-in p {
+    font-size: .75rem;
+    letter-spacing: .055em;
+  }
 }
