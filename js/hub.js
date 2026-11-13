@@ -220,9 +220,18 @@ async function openItem(id, type) {
       <h2>${esc(item.title)}</h2>
       <div class="modal-top-meta">
         <span>${item.year ?? ""}${isShow ? " · Série" : " · Filme"}</span>
-        <select class="quick-status-select" id="modal-status-select">
-          ${statusOptions.map(([val, label]) => `<option value="${val}" ${currentStatus === val ? "selected" : ""}>${label}</option>`).join("")}
-        </select>
+        <div class="status-dropdown" id="status-dropdown">
+          <select class="quick-status-select status-native-select" id="modal-status-select" tabindex="-1" aria-hidden="true">
+            ${statusOptions.map(([val, label]) => `<option value="${val}" ${currentStatus === val ? "selected" : ""}>${label}</option>`).join("")}
+          </select>
+          <button class="status-dropdown-trigger" id="status-dropdown-trigger" type="button" aria-haspopup="listbox" aria-expanded="false" aria-controls="status-dropdown-menu">
+            <span id="status-dropdown-label">${statusOptions.find(([val]) => val === currentStatus)?.[1] || "Quero assistir"}</span>
+            <svg class="status-chevron" viewBox="0 0 20 20" aria-hidden="true" focusable="false"><path d="m5.5 7.5 4.5 4.5 4.5-4.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+          <div class="status-dropdown-menu" id="status-dropdown-menu" role="listbox" aria-label="Status do título" aria-hidden="true">
+            ${statusOptions.map(([val, label]) => `<button type="button" class="status-dropdown-option${currentStatus === val ? " is-selected" : ""}" role="option" aria-selected="${currentStatus === val}" data-status-value="${val}">${label}</button>`).join("")}
+          </div>
+        </div>
         <span id="header-score-badge">${badge(currentScore)}</span>
         · <a href="${esc(item.traktUrl ?? "https://trakt.tv")}" target="_blank" rel="noopener">Trakt ↗</a>
       </div>
@@ -256,8 +265,49 @@ async function openItem(id, type) {
 
   d.showModal();
 
+  // Dropdown customizado de status; o select oculto preserva o valor e a integração existentes.
+  const statusDropdown = $("status-dropdown");
+  const statusTrigger = $("status-dropdown-trigger");
+  const statusMenu = $("status-dropdown-menu");
+  const statusSelect = $("modal-status-select");
+
+  const closeStatusMenu = () => {
+    statusDropdown?.classList.remove("is-open");
+    statusTrigger?.setAttribute("aria-expanded", "false");
+    statusMenu?.setAttribute("aria-hidden", "true");
+  };
+
+  statusTrigger?.addEventListener("click", () => {
+    const opening = !statusDropdown.classList.contains("is-open");
+    statusDropdown.classList.toggle("is-open", opening);
+    statusTrigger.setAttribute("aria-expanded", String(opening));
+    statusMenu.setAttribute("aria-hidden", String(!opening));
+  });
+
+  statusDropdown?.querySelectorAll("[data-status-value]").forEach(option => {
+    option.addEventListener("click", () => {
+      statusSelect.value = option.dataset.statusValue;
+      $("status-dropdown-label").textContent = option.textContent.trim();
+      statusDropdown.querySelectorAll("[data-status-value]").forEach(button => {
+        const selected = button === option;
+        button.classList.toggle("is-selected", selected);
+        button.setAttribute("aria-selected", String(selected));
+      });
+      closeStatusMenu();
+      statusSelect.dispatchEvent(new Event("change", { bubbles: true }));
+      statusTrigger.focus();
+    });
+  });
+
+  statusDropdown?.addEventListener("keydown", e => {
+    if (e.key === "Escape") {
+      closeStatusMenu();
+      statusTrigger?.focus();
+    }
+  });
+
   // Evento: Alterar status imediatamente
-  $("modal-status-select")?.addEventListener("change", async e => {
+  statusSelect?.addEventListener("change", async e => {
     const newStatus = e.target.value;
     item.status = newStatus;
     if (window.hubFB && fbUser) {
@@ -615,7 +665,15 @@ document.addEventListener("click", e => {
   if (card && !$("dlg").contains(card)) openItem(card.dataset.id, card.dataset.type);
 });
 
-$("dlg").addEventListener("click", e => { if (e.target === $("dlg")) $("dlg").close(); });
+$("dlg").addEventListener("click", e => {
+  const dropdown = $("status-dropdown");
+  if (dropdown && !dropdown.contains(e.target)) {
+    dropdown.classList.remove("is-open");
+    $("status-dropdown-trigger")?.setAttribute("aria-expanded", "false");
+    $("status-dropdown-menu")?.setAttribute("aria-hidden", "true");
+  }
+  if (e.target === $("dlg")) $("dlg").close();
+});
 
 /* =====================================================================
    CARREGAMENTO E SINCRONIZAÇÃO COM O TRAKT + FIREBASE
