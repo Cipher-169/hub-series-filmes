@@ -500,17 +500,13 @@ dialog {
   z-index: 20;
 }
 .status-native-select {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border: 0;
-  opacity: 0;
-  pointer-events: none;
+  display: none !important;
+  visibility: hidden !important;
+  position: absolute !important;
+  width: 0 !important;
+  height: 0 !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
 }
 .status-dropdown-trigger {
   display: inline-flex;
@@ -874,7 +870,7 @@ a { color: var(--gold); text-underline-offset: 3px; }
   min-height: clamp(430px, 61vh, 650px);
   background-color: #29241c;
   background-position: center 32%;
-  border-bottom: 1px solid rgba(231,216,190,.11);
+  border-bottom: none;
 }
 .hero::before {
   background:
@@ -1297,20 +1293,22 @@ dialog::backdrop { background: rgba(8,7,6,.8); backdrop-filter: blur(7px); }
   min-height: clamp(470px, 65vh, 700px);
   height: auto;
   padding-top: 110px;
-  background-color: #29241c;
+  background-color: #171613;
   background-position: center 32%;
   background-size: cover;
-  border-bottom: 1px solid rgba(231, 216, 190, .11);
+  border-bottom: none;
+  box-shadow: none;
   overflow: visible;
 }
 .hero::before {
   content: "";
   position: absolute;
   inset: 0;
+  bottom: -2px;
   z-index: 0;
   pointer-events: none;
   background:
-    linear-gradient(0deg, var(--bg) 0%, rgba(23, 22, 19, .72) 5%, rgba(23, 22, 19, .18) 24%, transparent 48%),
+    linear-gradient(0deg, #171613 0%, #171613 2%, rgba(23, 22, 19, .88) 9%, rgba(23, 22, 19, .38) 28%, transparent 52%),
     linear-gradient(90deg, rgba(17, 16, 13, .48) 0%, rgba(17, 16, 13, .25) 35%, transparent 72%);
 }
 .hero-in {
@@ -1405,7 +1403,7 @@ dialog::backdrop { background: rgba(8,7,6,.8); backdrop-filter: blur(7px); }
   align-items: center;
   min-width: 0;
   max-width: 100%;
-  overflow: visible;
+  overflow: hidden;
   scrollbar-width: none;
   -ms-overflow-style: none;
 }
