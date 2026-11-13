@@ -5,7 +5,7 @@
    CONTROLE DE VERSÃO:
    Sempre que modificar este arquivo incremente HUB_VERSION em +1.
    ===================================================================== */
-const HUB_VERSION = 17;
+const HUB_VERSION = 19;
 window.HUB_VERSION = HUB_VERSION;
 document.getElementById("project-version").textContent = `v${HUB_VERSION}`;
 
@@ -17,6 +17,8 @@ const bg  = u => u ? `style="background-image:url('${u}')"` : "";
 /* ---------- Estado global ---------- */
 let tab        = "agora";
 let fbUser     = null;
+const OWNER_UID = "X569uLFYFgcX6i9mbEVsylUX7Li1";
+const isOwner   = () => Boolean(fbUser && fbUser.uid === OWNER_UID);
 let movies     = [];   // catálogo de filmes
 let shows      = [];   // catálogo de séries
 let watching   = [];   // em andamento (filmes + séries)
@@ -223,10 +225,6 @@ async function openTmdbPreview(id, mediaType){
 
 /* ---- Aba "Estatísticas" ---- */
 function renderStats() {
-  if (!fbUser) {
-    $("view").innerHTML = `<div class="msg">Entre com a conta proprietária para ver suas estatísticas pessoais.</div>`;
-    return;
-  }
   const total   = movies.length + shows.length;
   const done    = [...movies, ...shows].filter(i => i.status === "completed").length;
   const rated   = [...movies, ...shows].filter(i => i.score > 0);
@@ -348,13 +346,13 @@ async function openItem(id, type, previewData = null) {
       <h2>${esc(item.title)}</h2>
       <div class="modal-top-meta">
         <span>${item.year ?? ""}${isShow ? " · Série" : " · Filme"}</span>
-        ${inCatalog ? `<div class="status-dropdown" id="status-dropdown">
+        ${inCatalog && fbUser ? `<div class="status-dropdown" id="status-dropdown">
           <select class="quick-status-select status-native-select" id="modal-status-select" tabindex="-1" aria-hidden="true">
             ${statusOptions.map(([val, label]) => `<option value="${val}" ${currentStatus === val ? "selected" : ""}>${label}</option>`).join("")}
           </select>
           <button class="status-dropdown-trigger" id="status-dropdown-trigger" type="button" aria-haspopup="listbox" aria-expanded="false" aria-controls="status-dropdown-menu"><span id="status-dropdown-label">${statusOptions.find(([val]) => val === currentStatus)?.[1] || "Quero assistir"}</span><svg class="status-chevron" viewBox="0 0 20 20" aria-hidden="true" focusable="false"><path d="m5.5 7.5 4.5 4.5 4.5-4.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
           <div class="status-dropdown-menu" id="status-dropdown-menu" role="listbox" aria-label="Status do título" aria-hidden="true">${statusOptions.map(([val, label]) => `<button type="button" class="status-dropdown-option${currentStatus === val ? " is-selected" : ""}" role="option" aria-selected="${currentStatus === val}" data-status-value="${val}">${label}</button>`).join("")}</div>
-        </div>` : `<span class="catalog-source-label">Catálogo TMDB</span>`}
+        </div>` : inCatalog ? `<span class="catalog-source-label">${statusOptions.find(([val]) => val === currentStatus)?.[1] || "Quero assistir"}</span>` : `<span class="catalog-source-label">Catálogo TMDB</span>`}
         <span id="header-score-badge">${badge(currentScore)}</span>
         · <span>TMDB</span>
       </div>
@@ -369,8 +367,8 @@ async function openItem(id, type, previewData = null) {
       <section id="detail-info">
         <div class="score-box score-box-primary">
           <label for="input-item-score"><strong>${isShow ? "Nota Geral da Série" : "Sua Avaliação"} (0 a 100):</strong></label>
-          <input type="number" id="input-item-score" min="0" max="100" value="${currentScore > 0 ? currentScore : ""}" placeholder="0–100" ${!inCatalog ? "disabled" : ""}>
-          <button type="button" id="btn-save-score" ${!inCatalog ? "disabled" : ""}>Salvar Nota</button>
+          <input type="number" id="input-item-score" min="0" max="100" value="${currentScore > 0 ? currentScore : ""}" placeholder="0–100" ${(!inCatalog || !fbUser) ? "disabled" : ""}>
+          <button type="button" id="btn-save-score" ${(!inCatalog || !fbUser) ? "disabled" : ""}>Salvar Nota</button>
           <span class="meta" id="score-status"></span>
         </div>
         <div class="detail-facts">
@@ -388,7 +386,7 @@ async function openItem(id, type, previewData = null) {
         </div>
         <p class="diary-intro detail-overview">${esc(item.overview || "Sem sinopse disponível.")}</p>
         ${item.cast?.length ? `<div class="detail-cast"><h3>Elenco principal</h3><p>${esc(item.cast.join(" · "))}</p></div>` : ""}
-        ${inCatalog ? `<button type="button" class="remove-catalog-btn" id="btn-remove-catalog">Remover da minha biblioteca</button>` : `<button type="button" class="tmdb-add-btn" id="btn-add-preview" ${!fbUser?"disabled":""}>${fbUser?"Adicionar à minha biblioteca":"Entre para adicionar"}</button>`}
+        ${inCatalog && isOwner() ? `<button type="button" class="remove-catalog-btn" id="btn-remove-catalog">Remover da minha biblioteca</button>` : !inCatalog ? `<button type="button" class="tmdb-add-btn" id="btn-add-preview" ${!fbUser?"disabled":""}>${fbUser?"Adicionar à minha biblioteca":"Entre para adicionar"}</button>` : ""}
         ${isShow && inCatalog ? `<div id="series-seasons-container"><div class="msg">Carregando temporadas e episódios…</div></div>` : ""}
       </section>
 
@@ -400,6 +398,7 @@ async function openItem(id, type, previewData = null) {
 
   d.showModal();
   $("btn-remove-catalog")?.addEventListener("click", async () => {
+    if (!isOwner()) { alert("Somente o proprietário pode remover títulos da biblioteca."); return; }
     if (!confirm(`Remover “${item.title}” da sua biblioteca? Os registros do diário serão preservados.`)) return;
     try { await hubFB.removeCatalogItem(id,type); await loadCatalog(); d.close(); }
     catch(err) { alert(`Não foi possível remover: ${err.code || err.message}`); }
@@ -554,7 +553,7 @@ async function loadSeriesSeasons(showId, savedNote) {
               </div>
 
               <!-- Sugestão opcional de nota ao concluir temporada -->
-              ${isFinished ? `
+              ${isFinished && fbUser ? `
                 <div class="season-score-prompt">
                   <strong>🎉 Temporada ${sNum} concluída!</strong>
                   <div style="display:flex;gap:8px;align-items:center;margin-top:6px;flex-wrap:wrap">
@@ -569,7 +568,7 @@ async function loadSeriesSeasons(showId, savedNote) {
                 ${(s.episodes || Array.from({ length: totalEps }, (_, i) => ({ number: i + 1 }))).map(ep => {
                   const epNum = ep.number;
                   const isWatched = watchedEps.has(epNum);
-                  return `<button type="button" class="ep-btn ${isWatched ? "watched" : ""}" data-season="${sNum}" data-ep="${epNum}" title="Episódio ${epNum}">E${epNum}</button>`;
+                  return `<button type="button" class="ep-btn ${isWatched ? "watched" : ""}" ${!fbUser ? "disabled" : ""} data-season="${sNum}" data-ep="${epNum}" title="Episódio ${epNum}">E${epNum}</button>`;
                 }).join("")}
               </div>
             </div>`;
@@ -795,12 +794,17 @@ function render() {
   document.body.classList.toggle("discover-mode", tab === "descobrir");
   const showFilters = tab === "filmes" || tab === "series";
   $("filters").classList.toggle("hidden", !showFilters);
-  $("stats-tab").classList.toggle("hidden", !fbUser);
+  $("stats-tab").classList.remove("hidden");
+  document.querySelector('[data-tab="descobrir"]')?.classList.toggle("hidden", !fbUser);
+  document.querySelector('[data-quick="discover"]')?.classList.toggle("hidden", !fbUser);
+  document.querySelector('[data-quick="search"]')?.classList.toggle("hidden", !fbUser);
+  if (tab === "descobrir" && !fbUser) tab = "agora";
 
   ({ agora: renderAgora, filmes: renderFilmes, series: renderSeries, descobrir: renderDiscover, stats: renderStats })[tab]?.();
 }
 
 document.querySelectorAll(".tabs button").forEach(b => b.addEventListener("click", () => {
+  if (b.dataset.tab === "descobrir" && !fbUser) return;
   tab = b.dataset.tab;
   if (tab === "descobrir") discoverView = "home";
   document.querySelectorAll(".tabs button").forEach(x => x.setAttribute("aria-selected", x === b));
@@ -886,7 +890,7 @@ async function loadCatalog() {
 document.addEventListener("keydown",e=>{const card=e.target.closest("[data-preview-id]");if(card&&(e.key==="Enter"||e.key===" ")){e.preventDefault();openTmdbPreview(card.dataset.previewId,card.dataset.previewType);}});
 document.addEventListener("click",async e=>{
   const quick=e.target.closest("[data-quick]");
-  if(quick){const action=quick.dataset.quick;if(action==="discover"){document.querySelector('[data-tab="descobrir"]')?.click();}else if(action==="search"){document.querySelector('[data-tab="descobrir"]')?.click();setTimeout(()=>$ ("tmdb-search-input")?.focus(),50);}else if(action==="watchlist"){tab="filmes";render();document.querySelector('[data-tab="filmes"]')?.click();$("filter-status").value="plantowatch";render();}else if(action==="random"){const pool=[...movies,...shows].filter(x=>x.status==="plantowatch");if(pool.length){const pick=pool[Math.floor(Math.random()*pool.length)];openItem(pick.id,pick.type);}else alert("Adicione títulos à sua lista para usar esta função.");}return;}
+  if(quick){const action=quick.dataset.quick;if(action==="discover"){if(!fbUser)return;document.querySelector('[data-tab="descobrir"]')?.click();}else if(action==="search"){if(!fbUser)return;document.querySelector('[data-tab="descobrir"]')?.click();setTimeout(()=>$ ("tmdb-search-input")?.focus(),50);}else if(action==="watchlist"){tab="filmes";render();document.querySelector('[data-tab="filmes"]')?.click();$("filter-status").value="plantowatch";render();}else if(action==="random"){const pool=[...movies,...shows].filter(x=>x.status==="plantowatch");if(pool.length){const pick=pool[Math.floor(Math.random()*pool.length)];openItem(pick.id,pick.type);}else alert("Adicione títulos à sua lista para usar esta função.");}return;}
   const cat=e.target.closest("[data-discover-category]");if(cat){discoverView=cat.dataset.discoverCategory;discoverPage=1;renderDiscover();return;}
   if(e.target.closest("[data-discover-home]")){discoverView="home";renderDiscover();return;}
   const page=e.target.closest("[data-discover-page]");if(page){discoverPage=Math.max(1,discoverPage+(page.dataset.discoverPage==="next"?1:-1));renderDiscover();return;}
