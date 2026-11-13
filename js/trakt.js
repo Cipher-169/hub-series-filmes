@@ -407,49 +407,91 @@ const TMDB_WORKER_URL = "https://hub-filmes-series.world-testaocenter790.workers
  * Usa o cache IndexedDB existente e limita a concorrência para não disparar
  * dezenas de requisições simultâneas ao Worker.
  */
-async function enrichWithPosters(items = []) {
-  const queue = items.filter(item => item?.tmdbId && !(item.cover && item.banner));
 
-  // DIAGNÓSTICO: verifica se as séries possuem ID do TMDB.
-  console.table(
-    items
-      .filter(item => item?.type === "show")
-      .map(item => ({
-        serie: item.title,
-        tmdbId: item.tmdbId,
-        entrouNaFila: !!item.tmdbId
-      }))
-  );
+async function enrichWithPosters(items = []) {
+  const queue = items.filter(item => item?.tmdbId);
 
   let cursor = 0;
+
+  function isValidImageUrl(url) {
+    return (
+      typeof url === "string" &&
+      /^https:\/\/image\.tmdb\.org\/t\/p\//i.test(url)
+    );
+  }
+
+  function hasValidImages(images) {
+    return (
+      images &&
+      typeof images === "object" &&
+      (
+        isValidImageUrl(images.posterUrl) ||
+        isValidImageUrl(images.backdropUrl)
+      )
+    );
+  }
 
   async function worker() {
     while (cursor < queue.length) {
       const item = queue[cursor++];
       const kind = item.type === "movie" ? "movie" : "tv";
-      const cacheKey = `tmdb_images_v2_${kind}_${item.tmdbId}`;
+      const cacheKey = `tmdb_images_v3_${kind}_${item.tmdbId}`;
+
+      const diagnostic = {
+        titulo: item.title,
+        tipo: kind,
+        tmdbId: item.tmdbId,
+        cache: "não consultado",
+        worker: "não consultado",
+        poster: false,
+        banner: false
+      };
 
       try {
         let images = await cacheGet(cacheKey);
 
-        if (!images) {
+        if (hasValidImages(images)) {
+          diagnostic.cache = "válido";
+        } else {
+          diagnostic.cache = "ausente ou inválido";
+
           const response = await fetch(
             `${TMDB_WORKER_URL}/api/tmdb/${kind}/${encodeURIComponent(item.tmdbId)}`
           );
 
           if (!response.ok) {
-            throw new Error(`TMDB Worker ${response.status}`);
+            throw new Error(`Worker respondeu HTTP ${response.status}`);
           }
 
           images = await response.json();
+
+          if (!hasValidImages(images)) {
+            throw new Error("Worker retornou dados sem URLs de imagem válidas.");
+          }
+
           await cacheSet(cacheKey, images);
+          diagnostic.worker = "sucesso";
         }
 
-        item.cover = item.cover || images.posterUrl || null;
-        item.banner = item.banner || images.backdropUrl || null;
+        // Prioriza as imagens válidas do TMDB.
+        if (isValidImageUrl(images.posterUrl)) {
+          item.cover = images.posterUrl;
+        }
+
+        if (isValidImageUrl(images.backdropUrl)) {
+          item.banner = images.backdropUrl;
+        }
+
+        diagnostic.poster = !!item.cover;
+        diagnostic.banner = !!item.banner;
+
+        console.log(`[TMDB] ${item.title}`, diagnostic);
 
       } catch (error) {
-        console.warn(`Não foi possível carregar imagens de ${item.title}:`, error);
+        diagnostic.worker = "erro";
+        diagnostic.erro = error.message;
+
+        console.error(`[TMDB] Falha em ${item.title}`, diagnostic, error);
       }
     }
   }
@@ -460,8 +502,19 @@ async function enrichWithPosters(items = []) {
     Array.from({ length: concurrency }, () => worker())
   );
 
+  console.table(
+    items.map(item => ({
+      titulo: item.title,
+      tipo: item.type,
+      tmdbId: item.tmdbId,
+      poster: !!item.cover,
+      banner: !!item.banner
+    }))
+  );
+
   return items;
 }
+
 
 /* =====================================================================
    CACHE LOCAL (IndexedDB) para o catálogo do Trakt
