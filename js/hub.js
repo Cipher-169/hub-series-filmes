@@ -5,7 +5,7 @@
    CONTROLE DE VERSÃO:
    Sempre que modificar este arquivo incremente HUB_VERSION em +1.
    ===================================================================== */
-const HUB_VERSION = 13;
+const HUB_VERSION = 14;
 window.HUB_VERSION = HUB_VERSION;
 document.getElementById("project-version").textContent = `v${HUB_VERSION}`;
 
@@ -88,7 +88,7 @@ function renderAgora() {
 function renderFilmes() {
   const list = filtered(movies);
   if (!list.length) {
-    $("view").innerHTML = `<h2>Meus filmes</h2><div class="msg">Sua biblioteca de filmes está vazia. Use “Adicionar título” acima para começar.</div>`;
+    $("view").innerHTML = `<h2>Meus filmes</h2><div class="msg">Sua biblioteca de filmes está vazia. Use a seção Descobrir para encontrar títulos e adicioná-los à sua biblioteca.</div>`;
     return;
   }
   const byStatus = groupByStatus(list);
@@ -104,7 +104,7 @@ function renderFilmes() {
 function renderSeries() {
   const list = filtered(shows);
   if (!list.length) {
-    $("view").innerHTML = `<h2>Minhas séries</h2><div class="msg">Sua biblioteca de séries está vazia. Use “Adicionar título” acima para começar.</div>`;
+    $("view").innerHTML = `<h2>Minhas séries</h2><div class="msg">Sua biblioteca de séries está vazia. Use a seção Descobrir para encontrar títulos e adicioná-los à sua biblioteca.</div>`;
     return;
   }
   const byStatus = groupByStatus(list);
@@ -117,62 +117,49 @@ function renderSeries() {
 }
 
 
-/* ---- Descobrir: busca integrada + catálogo TMDB ---- */
+/* ---- Descobrir: página inicial e categorias independentes ---- */
+const DISCOVER_CATEGORIES = [
+  {id:"trending", title:"Em alta esta semana", icon:"↗", path:"/api/tmdb/trending/all/week", type:"all"},
+  {id:"popular-movies", title:"Filmes populares", icon:"▣", path:"/api/tmdb/discover/movie?sort_by=popularity.desc", type:"movie"},
+  {id:"popular-tv", title:"Séries populares", icon:"▤", path:"/api/tmdb/discover/tv?sort_by=popularity.desc", type:"tv"},
+  {id:"top-movies", title:"Filmes mais bem avaliados", icon:"★", path:"/api/tmdb/discover/movie?sort_by=vote_average.desc&vote_count.gte=500", type:"movie"},
+  {id:"top-tv", title:"Séries mais bem avaliadas", icon:"☆", path:"/api/tmdb/discover/tv?sort_by=vote_average.desc&vote_count.gte=200", type:"tv"},
+  {id:"upcoming", title:"Próximos lançamentos", icon:"◷", path:"/api/tmdb/discover/movie?sort_by=primary_release_date.asc&primary_release_date.gte="+new Date().toISOString().slice(0,10), type:"movie"}
+];
+let discoverView = "home";
+let discoverPage = 1;
+let discoverCache = new Map();
 async function renderDiscover() {
-  $("view").innerHTML = `
-    <section class="discover-head">
-      <span class="eyebrow">EXPLORE O UNIVERSO DO CINEMA</span>
-      <h2>Encontre sua próxima história.</h2>
-      <p>Pesquise um título ou explore o que está em alta no cinema e na televisão.</p>
-      <form id="tmdb-search-form" class="catalog-search-form discover-search">
-        <select id="tmdb-search-type" aria-label="Tipo de título"><option value="multi">Tudo</option><option value="movie">Filmes</option><option value="tv">Séries</option></select>
-        <input id="tmdb-search-input" type="search" minlength="2" placeholder="Qual título você procura?" autocomplete="off" required>
-        <button type="submit" id="tmdb-search-submit">Buscar</button>
-      </form>
-      <p class="search-hint" id="tmdb-search-status">A busca consulta o catálogo do TMDB. Você pode adicionar os títulos à sua biblioteca.</p>
-      <div id="tmdb-search-results" class="tmdb-search-results" aria-live="polite"></div>
-    </section>
-    <div id="discover-sections" class="discover-sections"><div class="discover-loading">Carregando recomendações…</div></div>`;
-  bindDiscoverSearch();
-  if (!discoverLoaded && !discoverLoading) await loadDiscoverSections();
-}
-async function loadDiscoverSections() {
-  discoverLoading = true;
-  const target = $("discover-sections");
-  if (!target) { discoverLoading = false; return; }
-  const sections = [
-    ["Em alta esta semana", "/api/tmdb/trending/all/week"],
-    ["Filmes populares", "/api/tmdb/discover/movie?sort_by=popularity.desc"],
-    ["Séries populares", "/api/tmdb/discover/tv?sort_by=popularity.desc"],
-    ["Filmes mais bem avaliados", "/api/tmdb/discover/movie?sort_by=vote_average.desc&vote_count.gte=500"],
-    ["Séries mais bem avaliadas", "/api/tmdb/discover/tv?sort_by=vote_average.desc&vote_count.gte=200"]
-  ];
+  const view = $("view");
+  if (discoverView === "home") {
+    view.innerHTML = `<section class="discover-head"><span class="eyebrow">EXPLORE O UNIVERSO DO CINEMA</span><h2>Encontre sua próxima história.</h2><p>Escolha uma categoria ou pesquise diretamente no catálogo.</p>
+      <form id="tmdb-search-form" class="catalog-search-form discover-search"><select id="tmdb-search-type" aria-label="Tipo de título"><option value="multi">Tudo</option><option value="movie">Filmes</option><option value="tv">Séries</option></select><input id="tmdb-search-input" type="search" minlength="2" placeholder="Qual título você procura?" autocomplete="off" required><button type="submit" id="tmdb-search-submit">Buscar</button></form><p class="search-hint" id="tmdb-search-status">Pesquise no TMDB ou escolha uma das coleções abaixo.</p><div id="tmdb-search-results" class="tmdb-search-results"></div></section>
+      <section class="discover-category-grid">${DISCOVER_CATEGORIES.map(c=>`<button class="discover-category" type="button" data-discover-category="${c.id}"><span>${c.icon}</span><strong>${esc(c.title)}</strong><small>Explorar coleção</small><b>→</b></button>`).join("")}</section>`;
+    bindDiscoverSearch(); return;
+  }
+  const category = DISCOVER_CATEGORIES.find(c=>c.id===discoverView);
+  if (!category) { discoverView="home"; return renderDiscover(); }
+  view.innerHTML = `<div class="discover-category-top"><button type="button" class="text-back" data-discover-home>← Todas as categorias</button><span class="eyebrow">DESCOBRIR</span><h2>${esc(category.title)}</h2><p>Explore títulos selecionados pelo catálogo do TMDB.</p></div><div id="discover-results" class="discover-grid discover-grid-large"><div class="msg">Carregando títulos…</div></div><div class="discover-pagination"><button type="button" data-discover-page="prev" ${discoverPage<=1?"disabled":""}>← Anterior</button><span>Página ${discoverPage}</span><button type="button" data-discover-page="next">Próxima →</button></div>`;
+  const target=$("discover-results"), key=`${discoverView}:${discoverPage}`;
   try {
-    const data = await Promise.all(sections.map(async ([title,path]) => { const r=await fetch(`${TMDB_WORKER_URL}${path}`); if(!r.ok) throw new Error(`Falha ao carregar ${title.toLowerCase()}`); return {title,items:(await r.json()).results||[]}; }));
-    discoverLoaded = true;
-    target.innerHTML = data.map(s=>`<section class="discover-row"><div class="discover-row-heading"><h2>${esc(s.title)}</h2><span>TMDB</span></div><div class="discover-grid">${s.items.slice(0,12).map(discoverCard).join("")}</div></section>`).join("");
-  } catch(e) { target.innerHTML=`<div class="msg err">Não foi possível carregar as sugestões: ${esc(e.message)}.</div><button class="discover-retry" id="discover-retry">Tentar novamente</button>`; }
-  finally { discoverLoading=false; }
+    let data=discoverCache.get(key);
+    if(!data){const url=new URL(`${TMDB_WORKER_URL}${category.path}`,location.href);if(category.id!=="upcoming")url.searchParams.set("page",discoverPage);else url.searchParams.set("page",discoverPage);const r=await fetch(url);if(!r.ok)throw new Error(`TMDB HTTP ${r.status}`);data=await r.json();discoverCache.set(key,data);}
+    if($("discover-results")) target.innerHTML=(data.results||[]).map(discoverCard).join("")||`<div class="msg">Nenhum título encontrado.</div>`;
+  } catch(e){if(target)target.innerHTML=`<div class="msg err">Não foi possível carregar esta coleção: ${esc(e.message)}.</div>`;}
 }
 function discoverCard(item) {
-  const type=item.mediaType==="tv"?"show":"movie";
-  const exists=[...movies,...shows].some(x=>x.type===type&&String(x.id)===String(item.id));
+  const type=item.mediaType==="tv"?"show":"movie", exists=[...movies,...shows].some(x=>x.type===type&&String(x.id)===String(item.id));
   const poster=item.posterUrl?`<img src="${esc(item.posterUrl)}" alt="Pôster de ${esc(item.title)}" loading="lazy">`:`<div class="discover-no-poster">Sem pôster</div>`;
-  return `<article class="discover-card">${poster}<div class="discover-card-info"><strong>${esc(item.title)}</strong><span>${item.year||"Ano desconhecido"} · ${type==="show"?"Série":"Filme"}</span><button type="button" data-add-tmdb="${esc(item.id)}" data-media-type="${item.mediaType}" ${exists||!fbUser?"disabled":""}>${exists?"Na biblioteca":fbUser?"+ Adicionar":"Entre para adicionar"}</button></div></article>`;
+  return `<article class="discover-card" tabindex="0" aria-label="Ver detalhes de ${esc(item.title)}" data-preview-id="${esc(item.id)}" data-preview-type="${item.mediaType}">${poster}<div class="discover-card-info"><strong>${esc(item.title)}</strong><span>${item.year||"Ano desconhecido"} · ${type==="show"?"Série":"Filme"}</span><span class="discover-rating">★ ${Number(item.voteAverage||0).toFixed(1)}</span><button type="button" data-add-tmdb="${esc(item.id)}" data-media-type="${item.mediaType}" ${exists||!fbUser?"disabled":""}>${exists?"Na biblioteca":fbUser?"+ Adicionar":"Entre para adicionar"}</button></div></article>`;
 }
-function bindDiscoverSearch() {
-  $("tmdb-search-form")?.addEventListener("submit",async e=>{
-    e.preventDefault(); const q=$("tmdb-search-input").value.trim(), type=$("tmdb-search-type").value, status=$("tmdb-search-status"), out=$("tmdb-search-results");
-    if(q.length<2){status.textContent="Digite pelo menos 2 caracteres.";return;}
-    status.textContent="Buscando no TMDB…";out.innerHTML="";$("tmdb-search-submit").disabled=true;
-    try {
-      const r=await fetch(`${TMDB_WORKER_URL}/api/tmdb/search/${type}?query=${encodeURIComponent(q)}`),d=await r.json(); if(!r.ok)throw new Error(d.error||`TMDB HTTP ${r.status}`);
-      tmdbSearchResults=d.results||[]; if(!tmdbSearchResults.length){status.textContent="Nenhum resultado encontrado.";return;}
-      status.textContent=`${d.totalResults||tmdbSearchResults.length} resultado(s) encontrado(s).`;
-      const existing=new Set([...movies,...shows].map(x=>`${x.type}:${x.id}`));
-      out.innerHTML=tmdbSearchResults.map(item=>{const t=item.mediaType==="tv"?"show":"movie",added=existing.has(`${t}:${item.id}`),img=item.posterUrl?`<img src="${esc(item.posterUrl)}" alt="" loading="lazy">`:`<div class="search-poster-fallback">▤</div>`;return `<article class="tmdb-result">${img}<div class="tmdb-result-info"><strong>${esc(item.title)}</strong><span>${item.year||"Ano não informado"} · ${t==="show"?"Série":"Filme"}</span><p>${esc(item.overview||"Sinopse indisponível.")}</p></div><button type="button" class="tmdb-add-btn" data-add-tmdb="${esc(item.id)}" data-media-type="${item.mediaType}" ${added||!fbUser?"disabled":""}>${added?"Na biblioteca":fbUser?"Adicionar":"Entre para adicionar"}</button></article>`;}).join("");
-    } catch(err){status.textContent=`Não foi possível pesquisar: ${err.message}`;} finally{$("tmdb-search-submit").disabled=false;}
-  });
+function bindDiscoverSearch(){
+  $("tmdb-search-form")?.addEventListener("submit",async e=>{e.preventDefault();const q=$("tmdb-search-input").value.trim(),type=$("tmdb-search-type").value,status=$("tmdb-search-status"),out=$("tmdb-search-results");if(q.length<2){status.textContent="Digite pelo menos 2 caracteres.";return;}status.textContent="Buscando no TMDB…";out.innerHTML="";$("tmdb-search-submit").disabled=true;try{const r=await fetch(`${TMDB_WORKER_URL}/api/tmdb/search/${type}?query=${encodeURIComponent(q)}`),d=await r.json();if(!r.ok)throw new Error(d.error||`TMDB HTTP ${r.status}`);tmdbSearchResults=d.results||[];status.textContent=tmdbSearchResults.length?`${d.totalResults||tmdbSearchResults.length} resultado(s) encontrado(s).`:"Nenhum resultado encontrado.";out.innerHTML=tmdbSearchResults.map(discoverCard).join("");}catch(err){status.textContent=`Não foi possível pesquisar: ${err.message}`;}finally{$("tmdb-search-submit").disabled=false;}});
+}
+async function openTmdbPreview(id, mediaType){
+  const type=mediaType==="tv"?"show":"movie";
+  const existing=(type==="movie"?movies:shows).find(x=>String(x.id)===String(id));
+  if(existing) return openItem(id,type);
+  try{const r=await fetch(`${TMDB_WORKER_URL}/api/tmdb/${mediaType}/${id}`);if(!r.ok)throw new Error("Não foi possível carregar os detalhes.");const d=await r.json();await openItem(id,type,d);}catch(e){alert(e.message);}
 }
 
 /* ---- Aba "Estatísticas" ---- */
@@ -255,12 +242,25 @@ const wideCard = item => {
    - Séries: Nota Geral, Notas por Temporada, Episódios marcáveis e Diário
    ===================================================================== */
 
-async function openItem(id, type) {
-  const item = (type === "movie" ? movies : shows).find(i => i.id === String(id));
+async function openItem(id, type, previewData = null) {
+  const item = (type === "movie" ? movies : shows).find(i => i.id === String(id)) || (previewData ? { ...previewData, id:String(id), type, title:previewData.title || "Sem título", cover:previewData.posterUrl, banner:previewData.backdropUrl, status:"plantowatch", score:0 } : null);
   if (!item) return;
+  const inCatalog = (type === "movie" ? movies : shows).some(i => String(i.id) === String(id));
   activeItem = item;
   const d = $("dlg");
   const isShow = type === "show";
+  // Atualiza metadados antigos com a ficha técnica mais completa do TMDB.
+  if (!item.cast?.length || !item.genres?.length) {
+    try {
+      const mediaType = isShow ? "tv" : "movie";
+      const response = await fetch(`${TMDB_WORKER_URL}/api/tmdb/${mediaType}/${encodeURIComponent(id)}`);
+      if (response.ok) {
+        const fresh = await response.json();
+        Object.assign(item, fresh, { cover:fresh.posterUrl || item.cover, banner:fresh.backdropUrl || item.banner });
+        if (inCatalog && window.hubFB && fbUser) await hubFB.saveItemNote(id, type, fresh);
+      }
+    } catch (error) { console.warn("Não foi possível atualizar a ficha do TMDB", error); }
+  }
 
   let note = {};
   if (window.hubFB) {
@@ -283,18 +283,13 @@ async function openItem(id, type) {
       <h2>${esc(item.title)}</h2>
       <div class="modal-top-meta">
         <span>${item.year ?? ""}${isShow ? " · Série" : " · Filme"}</span>
-        <div class="status-dropdown" id="status-dropdown">
+        ${inCatalog ? `<div class="status-dropdown" id="status-dropdown">
           <select class="quick-status-select status-native-select" id="modal-status-select" tabindex="-1" aria-hidden="true">
             ${statusOptions.map(([val, label]) => `<option value="${val}" ${currentStatus === val ? "selected" : ""}>${label}</option>`).join("")}
           </select>
-          <button class="status-dropdown-trigger" id="status-dropdown-trigger" type="button" aria-haspopup="listbox" aria-expanded="false" aria-controls="status-dropdown-menu">
-            <span id="status-dropdown-label">${statusOptions.find(([val]) => val === currentStatus)?.[1] || "Quero assistir"}</span>
-            <svg class="status-chevron" viewBox="0 0 20 20" aria-hidden="true" focusable="false"><path d="m5.5 7.5 4.5 4.5 4.5-4.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
-          </button>
-          <div class="status-dropdown-menu" id="status-dropdown-menu" role="listbox" aria-label="Status do título" aria-hidden="true">
-            ${statusOptions.map(([val, label]) => `<button type="button" class="status-dropdown-option${currentStatus === val ? " is-selected" : ""}" role="option" aria-selected="${currentStatus === val}" data-status-value="${val}">${label}</button>`).join("")}
-          </div>
-        </div>
+          <button class="status-dropdown-trigger" id="status-dropdown-trigger" type="button" aria-haspopup="listbox" aria-expanded="false" aria-controls="status-dropdown-menu"><span id="status-dropdown-label">${statusOptions.find(([val]) => val === currentStatus)?.[1] || "Quero assistir"}</span><svg class="status-chevron" viewBox="0 0 20 20" aria-hidden="true" focusable="false"><path d="m5.5 7.5 4.5 4.5 4.5-4.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+          <div class="status-dropdown-menu" id="status-dropdown-menu" role="listbox" aria-label="Status do título" aria-hidden="true">${statusOptions.map(([val, label]) => `<button type="button" class="status-dropdown-option${currentStatus === val ? " is-selected" : ""}" role="option" aria-selected="${currentStatus === val}" data-status-value="${val}">${label}</button>`).join("")}</div>
+        </div>` : `<span class="catalog-source-label">Catálogo TMDB</span>`}
         <span id="header-score-badge">${badge(currentScore)}</span>
         · <span>TMDB</span>
       </div>
@@ -302,22 +297,34 @@ async function openItem(id, type) {
     <div class="db">
       <div class="detail-tabs">
         <button type="button" data-detail-tab="info" aria-selected="true">${isShow ? "Temporadas &amp; Avaliação" : "Avaliação &amp; Info"}</button>
-        <button type="button" data-detail-tab="diary" aria-selected="false">Diário</button>
+        ${inCatalog ? `<button type="button" data-detail-tab="diary" aria-selected="false">Diário</button>` : ""}
       </div>
 
       <!-- Seção: Informações e Avaliação -->
       <section id="detail-info">
-        <p class="diary-intro">${esc(item.overview || "Sem sinopse disponível.")}</p>
-
-        <!-- Caixa de Nota Geral -->
-        <div class="score-box">
+        <div class="score-box score-box-primary">
           <label for="input-item-score"><strong>${isShow ? "Nota Geral da Série" : "Sua Avaliação"} (0 a 100):</strong></label>
-          <input type="number" id="input-item-score" min="0" max="100" value="${currentScore > 0 ? currentScore : ""}" placeholder="0–100">
-          <button type="button" id="btn-save-score">Salvar Nota</button>
+          <input type="number" id="input-item-score" min="0" max="100" value="${currentScore > 0 ? currentScore : ""}" placeholder="0–100" ${!inCatalog ? "disabled" : ""}>
+          <button type="button" id="btn-save-score" ${!inCatalog ? "disabled" : ""}>Salvar Nota</button>
           <span class="meta" id="score-status"></span>
         </div>
-
-        ${isShow ? `<div id="series-seasons-container"><div class="msg">Carregando temporadas e episódios…</div></div>` : ""}
+        <div class="detail-facts">
+          ${item.genres?.length ? `<div><small>GÊNEROS</small><strong>${esc(item.genres.join(" · "))}</strong></div>` : ""}
+          ${item.runtime ? `<div><small>DURAÇÃO</small><strong>${item.runtime} min</strong></div>` : ""}
+          ${isShow && item.numberOfSeasons ? `<div><small>TEMPORADAS</small><strong>${item.numberOfSeasons}</strong></div>` : ""}
+          ${isShow && item.numberOfEpisodes ? `<div><small>EPISÓDIOS</small><strong>${item.numberOfEpisodes}</strong></div>` : ""}
+          ${item.voteAverage ? `<div><small>NOTA TMDB</small><strong>★ ${Number(item.voteAverage).toFixed(1)} / 10</strong></div>` : ""}
+          ${item.originalTitle ? `<div><small>TÍTULO ORIGINAL</small><strong>${esc(item.originalTitle)}</strong></div>` : ""}
+          ${item.statusText ? `<div><small>SITUAÇÃO</small><strong>${esc(item.statusText)}</strong></div>` : ""}
+          ${item.networks?.length ? `<div><small>EMISSORAS</small><strong>${esc(item.networks.join(" · "))}</strong></div>` : ""}
+          ${item.productionCountries?.length ? `<div><small>PAÍS DE ORIGEM</small><strong>${esc(item.productionCountries.join(" · "))}</strong></div>` : ""}
+          ${item.originalLanguage ? `<div><small>IDIOMA ORIGINAL</small><strong>${esc(item.originalLanguage.toUpperCase())}</strong></div>` : ""}
+          ${item.crew?.length ? `<div><small>${isShow ? "PRODUÇÃO" : "DIREÇÃO"}</small><strong>${esc(item.crew.join(" · "))}</strong></div>` : ""}
+        </div>
+        <p class="diary-intro detail-overview">${esc(item.overview || "Sem sinopse disponível.")}</p>
+        ${item.cast?.length ? `<div class="detail-cast"><h3>Elenco principal</h3><p>${esc(item.cast.join(" · "))}</p></div>` : ""}
+        ${inCatalog ? `<button type="button" class="remove-catalog-btn" id="btn-remove-catalog">Remover da minha biblioteca</button>` : `<button type="button" class="tmdb-add-btn" id="btn-add-preview" ${!fbUser?"disabled":""}>${fbUser?"Adicionar à minha biblioteca":"Entre para adicionar"}</button>`}
+        ${isShow && inCatalog ? `<div id="series-seasons-container"><div class="msg">Carregando temporadas e episódios…</div></div>` : ""}
       </section>
 
       <!-- Seção: Diário -->
@@ -327,6 +334,16 @@ async function openItem(id, type) {
     </div>`;
 
   d.showModal();
+  $("btn-remove-catalog")?.addEventListener("click", async () => {
+    if (!confirm(`Remover “${item.title}” da sua biblioteca? Os registros do diário serão preservados.`)) return;
+    try { await hubFB.removeCatalogItem(id,type); await loadCatalog(); d.close(); }
+    catch(err) { alert(`Não foi possível remover: ${err.code || err.message}`); }
+  });
+  $("btn-add-preview")?.addEventListener("click", async () => {
+    if (!fbUser) return;
+    try { await hubFB.addCatalogItem({ ...previewData, status:"plantowatch" }); await loadCatalog(); d.close(); }
+    catch(err) { alert(`Não foi possível adicionar: ${err.code || err.message}`); }
+  });
 
   // Dropdown customizado de status; o select oculto preserva o valor e a integração existentes.
   const statusDropdown = $("status-dropdown");
@@ -373,7 +390,7 @@ async function openItem(id, type) {
   statusSelect?.addEventListener("change", async e => {
     const newStatus = e.target.value;
     item.status = newStatus;
-    if (window.hubFB && fbUser) {
+    if (window.hubFB && fbUser && inCatalog) {
       try { await hubFB.saveItemNote(id, type, { status: newStatus }); } catch (err) {}
     }
     watching = [...movies, ...shows].filter(i => i.status === "watching");
@@ -390,10 +407,10 @@ async function openItem(id, type) {
     try {
       if (isShow) {
         item.score = scoreVal;
-        if (window.hubFB && fbUser) await hubFB.saveItemNote(id, type, { scoreOverall: scoreVal });
+        if (window.hubFB && fbUser && inCatalog) await hubFB.saveItemNote(id, type, { scoreOverall: scoreVal });
       } else {
         item.score = scoreVal;
-        if (window.hubFB && fbUser) await hubFB.saveItemNote(id, type, { score: scoreVal });
+        if (window.hubFB && fbUser && inCatalog) await hubFB.saveItemNote(id, type, { score: scoreVal });
       }
       $("header-score-badge").innerHTML = badge(scoreVal);
       statusEl.textContent = "Nota salva!";
@@ -404,12 +421,12 @@ async function openItem(id, type) {
   });
 
   // Se for série, carrega temporadas e episódios
-  if (isShow) {
+  if (isShow && inCatalog) {
     loadSeriesSeasons(id, note);
   }
 
-  // Carrega diário
-  loadDiary(id, type);
+  // O diário pertence à biblioteca pessoal; prévias do TMDB não carregam registros.
+  if (inCatalog) loadDiary(id, type);
 }
 
 /* ---- Carrega temporadas e episódios de série ---- */
@@ -597,13 +614,14 @@ function renderDiaryEntries(id, type, logs) {
     <h3 style="font:600 1.2rem var(--serif);margin:0 0 12px">Histórico <span class="meta">${sorted.length} registro(s)</span></h3>
     <div class="diary-list">${sorted.length
       ? sorted.map(log => `
-        <article class="diary-entry">
+        <article class="diary-entry" data-log-entry="${esc(log.id)}">
           <div class="diary-entry-head">
             <strong>${isShow ? `Episódio ${Number(log.episode) || "?"}` : "Sessão"}</strong>
             <span class="meta">${diaryDate(log.watchedAt)}</span>
           </div>
           <p>${esc(log.comment)}</p>
           ${editable ? `<div class="diary-actions">
+            <button type="button" data-edit-log="${esc(log.id)}">Editar</button>
             <button type="button" data-delete-log="${esc(log.id)}">Excluir</button>
           </div>` : ""}
         </article>`).join("")
@@ -632,14 +650,41 @@ function renderDiaryEntries(id, type, logs) {
     }
   });
 
-  $("diary-content").addEventListener("click", async e => {
+  $("diary-content").onsubmit = async ev => {
+    const form = ev.target.closest("[data-save-log]");
+    if (!form) return;
+    ev.preventDefault();
+    const data = new FormData(form);
+    const payload = { comment:String(data.get("comment")||"").trim(), watchedAt:String(data.get("watchedAt")||"") };
+    if (isShow) { payload.episode = Number(data.get("episode")); if (!Number.isInteger(payload.episode) || payload.episode < 0) { alert("Número de episódio inválido."); return; } }
+    if (!payload.comment) { alert("O comentário não pode ficar vazio."); return; }
+    const save = form.querySelector('button[type="submit"]'); save.disabled = true; save.textContent = "Salvando…";
+    try { await hubFB.updateItemLog(form.dataset.saveLog, payload); await loadDiary(id,type); }
+    catch(err) { save.disabled = false; save.textContent = "Tentar novamente"; alert(`Não foi possível editar: ${err.code || err.message}`); }
+  };
+
+  $("diary-content").onclick = async e => {
+    const edit = e.target.closest("[data-edit-log]");
+    if (edit) {
+      const log = logs.find(x => String(x.id) === String(edit.dataset.editLog));
+      const article = edit.closest("[data-log-entry]");
+      if (!log || !article) return;
+      article.innerHTML = `<form class="diary-edit-form" data-save-log="${esc(log.id)}">
+        ${isShow ? `<label>Episódio<input name="episode" type="number" min="0" step="1" value="${Number(log.episode)||1}" required></label>` : ""}
+        <label>Data<input name="watchedAt" type="date" value="${esc(log.watchedAt||"")}"></label>
+        <label>Comentário<textarea name="comment" maxlength="10000" required>${esc(log.comment||"")}</textarea></label>
+        <div class="diary-actions"><button type="submit">Salvar alterações</button><button type="button" data-cancel-edit>Cancelar</button></div>
+      </form>`;
+      return;
+    }
+    if (e.target.closest("[data-cancel-edit]")) { await loadDiary(id,type); return; }
     const del = e.target.closest("[data-delete-log]");
     if (del) {
       if (!confirm("Excluir este registro?")) return;
       try { await hubFB.deleteItemLog(del.dataset.deleteLog); await loadDiary(id, type); }
       catch (err) { alert("Não foi possível excluir: " + (err.code || err.message)); }
     }
-  });
+  };
 }
 
 async function loadDiary(id, type) {
@@ -691,6 +736,7 @@ function render() {
 
 document.querySelectorAll(".tabs button").forEach(b => b.addEventListener("click", () => {
   tab = b.dataset.tab;
+  if (tab === "descobrir") discoverView = "home";
   document.querySelectorAll(".tabs button").forEach(x => x.setAttribute("aria-selected", x === b));
   render();
 }));
@@ -770,7 +816,14 @@ async function loadCatalog() {
 }
 
 /* Adicionar título à biblioteca a partir da busca ou das recomendações */
+document.addEventListener("keydown",e=>{const card=e.target.closest("[data-preview-id]");if(card&&(e.key==="Enter"||e.key===" ")){e.preventDefault();openTmdbPreview(card.dataset.previewId,card.dataset.previewType);}});
 document.addEventListener("click",async e=>{
+  const quick=e.target.closest("[data-quick]");
+  if(quick){const action=quick.dataset.quick;if(action==="discover"){document.querySelector('[data-tab="descobrir"]')?.click();}else if(action==="search"){document.querySelector('[data-tab="descobrir"]')?.click();setTimeout(()=>$ ("tmdb-search-input")?.focus(),50);}else if(action==="watchlist"){tab="filmes";render();document.querySelector('[data-tab="filmes"]')?.click();$("filter-status").value="plantowatch";render();}else if(action==="random"){const pool=[...movies,...shows].filter(x=>x.status==="plantowatch");if(pool.length){const pick=pool[Math.floor(Math.random()*pool.length)];openItem(pick.id,pick.type);}else alert("Adicione títulos à sua lista para usar esta função.");}return;}
+  const cat=e.target.closest("[data-discover-category]");if(cat){discoverView=cat.dataset.discoverCategory;discoverPage=1;renderDiscover();return;}
+  if(e.target.closest("[data-discover-home]")){discoverView="home";renderDiscover();return;}
+  const page=e.target.closest("[data-discover-page]");if(page){discoverPage=Math.max(1,discoverPage+(page.dataset.discoverPage==="next"?1:-1));renderDiscover();return;}
+  const preview=e.target.closest("[data-preview-id]");if(preview&&!e.target.closest("[data-add-tmdb]")){openTmdbPreview(preview.dataset.previewId,preview.dataset.previewType);return;}
   if(e.target.closest("#discover-retry")){discoverLoaded=false;loadDiscoverSections();return;}
   const button=e.target.closest("[data-add-tmdb]"); if(!button)return;
   if(!fbUser||!window.hubFB){alert("Entre com sua conta Google para adicionar títulos.");return;}

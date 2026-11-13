@@ -218,6 +218,20 @@ window.hubFB = {
     await cacheDelete(`logs:${type}:${itemId}`);
   },
 
+  updateItemLog: async (logId, data) => {
+    requireOwner();
+    const ref = doc(db, "users", OWNER_UID, "mediaLogs", String(logId));
+    const snap = await getDoc(ref);
+    if (!snap.exists()) throw new Error("Registro do diário não encontrado.");
+    const payload = { updatedAt: serverTimestamp() };
+    if (Object.prototype.hasOwnProperty.call(data, "comment")) payload.comment = String(data.comment ?? "");
+    if (Object.prototype.hasOwnProperty.call(data, "watchedAt")) payload.watchedAt = String(data.watchedAt ?? "");
+    if (Object.prototype.hasOwnProperty.call(data, "episode")) payload.episode = Number(data.episode);
+    await setDoc(ref, payload, { merge: true });
+    const old = snap.data();
+    await cacheDelete(`logs:${old.type}:${old.itemId}`);
+  },
+
   deleteItemLog: async (logId) => {
     requireOwner();
     const ref = doc(db, "users", OWNER_UID, "mediaLogs", String(logId));
