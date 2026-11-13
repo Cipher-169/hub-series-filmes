@@ -409,6 +409,18 @@ const TMDB_WORKER_URL = "https://hub-filmes-series.world-testaocenter790.workers
  */
 async function enrichWithPosters(items = []) {
   const queue = items.filter(item => item?.tmdbId && !(item.cover && item.banner));
+
+  // DIAGNÓSTICO: verifica se as séries possuem ID do TMDB.
+  console.table(
+    items
+      .filter(item => item?.type === "show")
+      .map(item => ({
+        serie: item.title,
+        tmdbId: item.tmdbId,
+        entrouNaFila: !!item.tmdbId
+      }))
+  );
+
   let cursor = 0;
 
   async function worker() {
@@ -419,15 +431,23 @@ async function enrichWithPosters(items = []) {
 
       try {
         let images = await cacheGet(cacheKey);
+
         if (!images) {
-          const response = await fetch(`${TMDB_WORKER_URL}/api/tmdb/${kind}/${encodeURIComponent(item.tmdbId)}`);
-          if (!response.ok) throw new Error(`TMDB Worker ${response.status}`);
+          const response = await fetch(
+            `${TMDB_WORKER_URL}/api/tmdb/${kind}/${encodeURIComponent(item.tmdbId)}`
+          );
+
+          if (!response.ok) {
+            throw new Error(`TMDB Worker ${response.status}`);
+          }
+
           images = await response.json();
           await cacheSet(cacheKey, images);
         }
 
         item.cover = item.cover || images.posterUrl || null;
         item.banner = item.banner || images.backdropUrl || null;
+
       } catch (error) {
         console.warn(`Não foi possível carregar imagens de ${item.title}:`, error);
       }
@@ -435,7 +455,11 @@ async function enrichWithPosters(items = []) {
   }
 
   const concurrency = Math.min(6, queue.length);
-  await Promise.all(Array.from({ length: concurrency }, () => worker()));
+
+  await Promise.all(
+    Array.from({ length: concurrency }, () => worker())
+  );
+
   return items;
 }
 
