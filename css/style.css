@@ -195,8 +195,8 @@ input { cursor: text }
   z-index: 5;
   display: flex;
 
-  overflow-x: auto;
-  scrollbar-width: thin;
+  overflow: visible;
+  scrollbar-width: none;
 }
 .tabs button {
   position: relative;
@@ -719,7 +719,10 @@ h2 .meta {    letter-spacing: .08em; }
   .profile-chip { min-height: 32px; }
   .who button { min-height: 32px; padding: 5px 9px; font-size: .7rem; }
 
-  .tabs {  overflow-x: auto; }
+  .tabs {
+    overflow: visible;
+    scrollbar-width: none;
+  }
 
 }
 
@@ -1288,5 +1291,42 @@ dialog::backdrop { background: rgba(8,7,6,.8); backdrop-filter: blur(7px); }
   .hero-in p {
     font-size: .75rem;
     letter-spacing: .055em;
+  }
+}
+
+
+/* ============================================================
+   NAVEGAÇÃO — sem barras de rolagem internas
+   ============================================================ */
+.tabs {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  min-width: 0;
+  max-width: 100%;
+  overflow: visible;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.tabs::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+.tabs button {
+  flex: 1 1 0;
+  min-width: 0;
+  white-space: nowrap;
+  text-align: center;
+}
+@media (max-width: 520px) {
+  .tabs {
+    gap: 8px;
+    margin-inline: 0;
+  }
+  .tabs button {
+    padding-inline: 2px;
+    font-size: .62rem;
+    letter-spacing: .035em;
   }
 }
