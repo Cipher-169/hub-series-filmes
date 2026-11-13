@@ -19,11 +19,8 @@
   <div class="top">
     <div class="brand">
       Hub de <i>filmes</i> &amp; <i>séries</i><span class="project-version" id="project-version">v—</span>
-      <a class="trakt-profile-link" href="https://trakt.tv/users/Cypher169" target="_blank" rel="noopener noreferrer">Meu Trakt ↗</a>
     </div>
     <div class="who">
-      <span class="profile-chip" aria-label="Perfil Trakt fixo">Trakt: <strong>Cypher169</strong></span>
-      <button id="btn-sync" type="button">Sincronizar Trakt</button>
       <button id="btn-login" type="button">Entrar com Google</button>
     </div>
   </div>
@@ -34,19 +31,7 @@
 
 <!-- ============ SHELL ============ -->
 <div class="wrap">
-  <p class="sync-status" id="sync-status" role="status">Catálogo público via Trakt; cache local por até 6 horas.</p>
-
-  <!-- Painel de Conexão com Trakt (gerenciado após login no Google) -->
-  <section class="trakt-connect" id="trakt-connect-section" aria-label="Conexão da conta Trakt">
-    <div class="trakt-connect-info">
-      <strong>Conexão com Trakt</strong>
-      <span class="trakt-connect-status" id="trakt-connection-status" role="status">Entre com a conta Google proprietária para verificar ou conectar o Trakt.</span>
-    </div>
-    <div class="trakt-connect-actions">
-      <button type="button" class="primary" id="btn-trakt-connect" disabled>Conectar Trakt</button>
-      <button type="button" id="btn-trakt-disconnect" class="hidden">Desconectar</button>
-    </div>
-  </section>
+  <p class="sync-status" id="sync-status" role="status">Biblioteca pessoal armazenada no Firebase.</p>
 
   <p class="meta" id="me"></p>
 
@@ -92,7 +77,6 @@
 </footer>
 
 <!-- ============ SCRIPTS ============ -->
-<script src="js/trakt.js"></script>
 <script src="js/hub.js"></script>
 <script type="module" src="js/firebase.js"></script>
 </body>

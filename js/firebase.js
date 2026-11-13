@@ -123,6 +123,30 @@ window.hubFB = {
   },
   logout: () => signOut(auth),
 
+  /* Biblioteca própria: IDs do TMDB como identificadores permanentes. */
+  getCatalog: async ({ refresh = false } = {}) => {
+    if (refresh) await cacheDelete("personal_catalog");
+    return freshOrCached("personal_catalog", async () => {
+      const snap = await getDocs(collection(db, "users", OWNER_UID, "personalCatalog"));
+      return snap.docs.map(d => ({ ...d.data(), id: String(d.data().id || d.id.replace(/^(movie|tv)_/, "")) }));
+    });
+  },
+  addCatalogItem: async item => {
+    requireOwner();
+    if (!item?.id || !["movie", "tv"].includes(item.mediaType)) throw new Error("Título TMDB inválido.");
+    const id = String(item.id);
+    await setDoc(doc(db, "users", OWNER_UID, "personalCatalog", `${item.mediaType}_${id}`), {
+      ...item, id, type: item.mediaType === "tv" ? "show" : "movie", status: item.status || "plantowatch", addedAt: serverTimestamp()
+    }, { merge: true });
+    await cacheDelete("personal_catalog");
+  },
+  removeCatalogItem: async (id, type) => {
+    requireOwner();
+    const mediaType = type === "show" ? "tv" : "movie";
+    await deleteDoc(doc(db, "users", OWNER_UID, "personalCatalog", `${mediaType}_${id}`));
+    await cacheDelete("personal_catalog");
+  },
+
   /* Notas de um item (plataforma, impressão geral, etc.) */
   getItemNote: async (itemId, type) =>
     freshOrCached(`note:${type}:${itemId}`, async () => {

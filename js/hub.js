@@ -1,11 +1,11 @@
 /* =====================================================================
    HUB DE FILMES & SÉRIES — Clpher
-   hub.js — lógica principal (UI, abas, renderização, integração Trakt + Firebase)
+   hub.js — lógica principal (UI, abas, renderização, TMDB + Firebase)
    =====================================================================
    CONTROLE DE VERSÃO:
    Sempre que modificar este arquivo incremente HUB_VERSION em +1.
    ===================================================================== */
-const HUB_VERSION = 10;
+const HUB_VERSION = 11;
 window.HUB_VERSION = HUB_VERSION;
 document.getElementById("project-version").textContent = `v${HUB_VERSION}`;
 
@@ -22,6 +22,7 @@ let shows      = [];   // catálogo de séries
 let watching   = [];   // em andamento (filmes + séries)
 let activeItem = null; // item aberto no modal
 let showSeasonsCache = new Map(); // cache das temporadas de séries
+const TMDB_WORKER_URL = "https://hub-filmes-series.world-testaocenter790.workers.dev";
 
 /* ---------- Tiers de nota (0–100) ---------- */
 const TIERS = [
@@ -233,7 +234,7 @@ async function openItem(id, type) {
           </div>
         </div>
         <span id="header-score-badge">${badge(currentScore)}</span>
-        · <a href="${esc(item.traktUrl ?? "https://trakt.tv")}" target="_blank" rel="noopener">Trakt ↗</a>
+        · <span>TMDB</span>
       </div>
     </div>
     <div class="db">
@@ -356,8 +357,18 @@ async function loadSeriesSeasons(showId, savedNote) {
 
   try {
     let seasonsData = showSeasonsCache.get(showId);
-    if (!seasonsData && window.TraktAuth) {
-      seasonsData = await TraktAuth.fetchShowSeasons(showId);
+    if (!seasonsData) {
+      const response = await fetch(`${TMDB_WORKER_URL}/api/tmdb/tv/${encodeURIComponent(showId)}`);
+      if (!response.ok) throw new Error(`TMDB respondeu com HTTP ${response.status}`);
+      const detail = await response.json();
+      const seasons = detail.seasons || [];
+      seasonsData = await Promise.all(seasons.map(async season => {
+        const result = await fetch(`${TMDB_WORKER_URL}/api/tmdb/tv/${encodeURIComponent(showId)}/season/${season.seasonNumber}`);
+        if (!result.ok) throw new Error(`Não foi possível carregar a temporada ${season.seasonNumber}.`);
+        const data = await result.json();
+        return { number: data.seasonNumber, name: data.name, episode_count: data.episodes?.length || season.episodeCount || 0,
+          episodes: (data.episodes || []).map(ep => ({ number: ep.number, name: ep.name, overview: ep.overview, stillUrl: ep.stillUrl })) };
+      }));
       showSeasonsCache.set(showId, seasonsData);
     }
     if (!seasonsData || !seasonsData.length) {
@@ -676,207 +687,39 @@ $("dlg").addEventListener("click", e => {
 });
 
 /* =====================================================================
-   CARREGAMENTO E SINCRONIZAÇÃO COM O TRAKT + FIREBASE
+   BIBLIOTECA PRÓPRIA — Firebase + metadados TMDB
    ===================================================================== */
-
-async function loadCatalog({ sync = false } = {}) {
-  const username = window.TraktAuth?.OWNER || "Cypher169";
+async function loadCatalog() {
   const statusEl = $("sync-status");
-  statusEl.textContent = sync ? "Sincronizando com o Trakt…" : "Carregando catálogo…";
-  $("btn-sync").disabled = true;
-
+  statusEl.textContent = "Carregando sua biblioteca…";
   try {
-    let rawData = null;
-    const cacheKey = `trakt_catalog_${username}`;
-
-    if (sync && window.TraktAuth) {
-      await TraktAuth.cacheDelete(cacheKey);
-    } else if (window.TraktAuth) {
-      rawData = await TraktAuth.cacheGet(cacheKey);
-    }
-
-    if (rawData && !["wMovies", "wlMovies", "cMovies", "wShows", "wlShows", "cShows"].every(key => Array.isArray(rawData[key]))) {
-      await TraktAuth.cacheDelete(cacheKey);
-      rawData = null;
-    }
-
-    if (!rawData && window.TraktAuth) {
-      rawData = await TraktAuth.fetchCatalog(username);
-      const totalRaw = ["wMovies", "wlMovies", "cMovies", "wShows", "wlShows", "cShows"]
-        .reduce((total, key) => total + rawData[key].length, 0);
-      console.log("Trakt fetchCatalog total itens retornados:", totalRaw, rawData);
-      // Cacheia inclusive catálogos vazios: uma resposta válida vazia é diferente de falha.
-      await TraktAuth.cacheSet(cacheKey, rawData);
-    }
-
-    // Busca notas salvas no Firebase
-    let fbMovieNotes = {}, fbShowNotes = {};
-    if (window.hubFB) {
-      try {
-        [fbMovieNotes, fbShowNotes] = await Promise.all([
-          hubFB.getAllMovieNotes({ refresh: sync }),
-          hubFB.getAllShowNotes({ refresh: sync })
-        ]);
-      } catch (err) {
-        console.warn("Aviso ao ler notas do Firebase:", err);
-      }
-    }
-
-    const mergedNotes = {};
-    Object.entries(fbMovieNotes).forEach(([id, n]) => mergedNotes[`movie_${id}`] = n);
-    Object.entries(fbShowNotes).forEach(([id, n]) => mergedNotes[`show_${id}`] = n);
-
-    if (rawData && window.TraktAuth) {
-      const transformed = TraktAuth.transformCatalog(rawData, mergedNotes);
-
-      // Enriquecimento visual independente: o catálogo e os dados pessoais
-      // continuam vindo do Trakt/Firebase; as artes são obtidas pelo Worker.
-      statusEl.textContent = "Carregando pôsteres e imagens…";
-      await TraktAuth.enrichWithPosters([...transformed.movies, ...transformed.shows]);
-
-      movies   = transformed.movies;
-      shows    = transformed.shows;
-      watching = transformed.watching;
-
-      // Aplica status customizados do Firebase se existirem
-      movies.forEach(m => {
-        if (fbMovieNotes[m.id]?.status) m.status = fbMovieNotes[m.id].status;
-        if (fbMovieNotes[m.id]?.score)  m.score  = fbMovieNotes[m.id].score;
-      });
-      shows.forEach(s => {
-        if (fbShowNotes[s.id]?.status)       s.status = fbShowNotes[s.id].status;
-        if (fbShowNotes[s.id]?.scoreOverall) s.score  = fbShowNotes[s.id].scoreOverall;
-      });
-      watching = [...movies, ...shows].filter(i => i.status === "watching");
-
-      populateYears();
-      renderHero();
-      render();
-      statusEl.textContent = `Catálogo atualizado · ${movies.length} filmes, ${shows.length} séries`;
-    } else {
-      loadFallbackMock();
-    }
-  } catch (e) {
-    console.error("Falha ao carregar do Trakt:", e);
-    statusEl.textContent = `Não foi possível carregar o catálogo (${esc(e.message)}). Tente sincronizar novamente.`;
-    console.error("O catálogo de demonstração não será exibido para evitar confusão com dados reais.");
-  } finally {
-    $("btn-sync").disabled = false;
+    if (!window.hubFB) throw new Error("Firebase ainda está inicializando.");
+    const catalog = await hubFB.getCatalog({ refresh: true });
+    movies = catalog.filter(x => x.type === "movie").map(x => ({ ...x, id: String(x.id), type: "movie", title: x.title || "Sem título", year: x.year || null, status: x.status || "plantowatch", score: Number(x.score || 0), cover: x.posterUrl || x.cover || null, banner: x.backdropUrl || x.banner || null, overview: x.overview || "" }));
+    shows = catalog.filter(x => x.type === "show").map(x => ({ ...x, id: String(x.id), type: "show", title: x.title || "Sem título", year: x.year || null, status: x.status || "plantowatch", score: Number(x.score || 0), cover: x.posterUrl || x.cover || null, banner: x.backdropUrl || x.banner || null, overview: x.overview || "", eps: x.numberOfEpisodes || 0 }));
+    watching = [...movies, ...shows].filter(i => i.status === "watching");
+    populateYears(); renderHero(); render();
+    statusEl.textContent = `Biblioteca carregada · ${movies.length} filmes, ${shows.length} séries`;
+  } catch (error) {
+    console.error("Falha ao carregar biblioteca:", error);
+    statusEl.textContent = `Não foi possível carregar sua biblioteca: ${esc(error.message)}`;
+    movies = []; shows = []; watching = []; renderHero(); render();
   }
 }
 
-function loadFallbackMock() {
-  movies = [
-    { id: "605175", type: "movie", title: "Dune: Part Two",        year: 2024, status: "completed", score: 92, cover: "https://image.tmdb.org/t/p/w500/1pdfLvkbY9ohJlCjQH2CZjjYVvJ.jpg",  banner: "https://image.tmdb.org/t/p/original/xOMo8BRK7PfcJv9JCnx7s5hj0PX.jpg", overview: "Paul Atreides une forças com Chani e os Fremen." },
-    { id: "575264", type: "movie", title: "Oppenheimer",           year: 2023, status: "completed", score: 95, cover: "https://image.tmdb.org/t/p/w500/8Gxv8gSFCU0XGDykEGv7zR1n2ua.jpg",  banner: "https://image.tmdb.org/t/p/original/feSiISwgEpVzR1v3zv2n2LsbsL8.jpg", overview: "A história do pai da bomba atômica." },
-    { id: "666277", type: "movie", title: "Past Lives",            year: 2023, status: "completed", score: 88, cover: "https://image.tmdb.org/t/p/w500/k3waqVXSnFLKGmFQp7GDCgDdNaR.jpg",  banner: null, overview: "Dois amigos de infância se reencontram décadas depois." },
-  ];
-  shows = [
-    { id: "139160", type: "show", title: "Shogun",         year: 2024, status: "watching",    score: 96, progress: 7, eps: 10, cover: "https://image.tmdb.org/t/p/w500/9bDdSgTOJ4U2i0TqoFoNFXG2QgL.jpg", banner: "https://image.tmdb.org/t/p/original/zGLHX92Gk96O1DJvLil7ObJTbaL.jpg", overview: "Japão feudal, guerras e honra." },
-    { id: "136311", type: "show", title: "The Bear",       year: 2022, status: "watching",    score: 93, progress: 4, eps: 10, cover: "https://image.tmdb.org/t/p/w500/sHFlbKS3WLqMnp9t2ghADIJFnuQ.jpg", banner: "https://image.tmdb.org/t/p/original/0mHgHFBLV1LZO1qUcPH4bWrLMGy.jpg", overview: "Um chef herda o restaurante da família." },
-    { id: "100757", type: "show", title: "Severance",      year: 2022, status: "completed",   score: 97, progress: 9, eps: 9,  cover: "https://image.tmdb.org/t/p/w500/lHra7VzOeCunGm3i2qJmAfDmhfF.jpg", banner: "https://image.tmdb.org/t/p/original/mInGl4nyiCqFSQvCDMzVw6nFMJo.jpg", overview: "Funcionários com memórias separadas." },
-  ];
-  watching = [...movies, ...shows].filter(i => i.status === "watching");
-  populateYears();
-  renderHero();
-  render();
-}
-
-/* =====================================================================
-   PAINEL DE CONEXÃO COM TRAKT (gerenciado pela autenticação Google)
-   ===================================================================== */
-
-function updateTraktConnectionUI() {
-  const statusEl      = $("trakt-connection-status");
-  const btnConnect    = $("btn-trakt-connect");
-  const btnDisconnect = $("btn-trakt-disconnect");
-  if (!statusEl || !btnConnect || !btnDisconnect) return;
-
-  const isTraktAuth = window.TraktAuth?.isAuthenticated();
-
-  if (!fbUser) {
-    statusEl.textContent = "Entre com a conta Google proprietária para gerenciar a conexão com o Trakt.";
-    btnConnect.classList.remove("hidden");
-    btnConnect.disabled = true;
-    btnConnect.title = "Faça login com a conta Google primeiro";
-    btnDisconnect.classList.add("hidden");
-  } else {
-    if (isTraktAuth) {
-      statusEl.textContent = `Conectado como ${TraktAuth.OWNER || "Cypher169"}.`;
-      btnConnect.classList.add("hidden");
-      btnDisconnect.classList.remove("hidden");
-      btnDisconnect.disabled = false;
-    } else {
-      statusEl.textContent = "Nenhuma conta Trakt conectada.";
-      btnConnect.classList.remove("hidden");
-      btnConnect.disabled = false;
-      btnConnect.title = "Clique para autorizar sua conta Trakt";
-      btnDisconnect.classList.add("hidden");
-    }
-  }
-}
-
-/* =====================================================================
-   INICIALIZAÇÃO DO APP
-   ===================================================================== */
-
-async function init() {
-  // Trata retorno de OAuth PKCE sem impedir a inicialização da interface em caso de erro.
-  if (window.TraktAuth) {
-    try {
-      const handled = await TraktAuth.handleCallback();
-      if (handled) $("sync-status").textContent = "Conexão com Trakt autorizada com sucesso!";
-    } catch (error) {
-      console.error("Falha no retorno OAuth do Trakt:", error);
-      $("sync-status").textContent = error.message || "Não foi possível concluir a conexão com o Trakt.";
-    }
-  }
-
-  updateTraktConnectionUI();
-
-  $("btn-trakt-connect")?.addEventListener("click", () => {
-    if (!fbUser) {
-      alert("Você precisa entrar com sua conta Google proprietária antes de conectar o Trakt.");
-      return;
-    }
-    TraktAuth.login();
-  });
-
-  $("btn-trakt-disconnect")?.addEventListener("click", () => {
-    if (confirm("Deseja desconectar sua conta Trakt deste navegador?")) {
-      TraktAuth.logout();
-      updateTraktConnectionUI();
-      location.reload();
-    }
-  });
-
-  $("btn-sync").addEventListener("click", () => loadCatalog({ sync: true }));
-
-  // Carrega catálogo inicial
-  loadCatalog();
-}
-
-/* Ouve eventos do Firebase Auth */
+/* Inicialização */
+async function init() { if (window.hubFB) await loadCatalog(); else $("sync-status").textContent = "Conectando ao Firebase…"; }
 window.addEventListener("fb-user", e => {
   fbUser = e.detail;
   const loginBtn = $("btn-login");
-  if (loginBtn) {
-    loginBtn.textContent = fbUser ? "Sair" : "Entrar com Google";
-    loginBtn.title = fbUser ? `Conectado como ${fbUser.name || fbUser.uid}. Clique para sair.` : "Entrar com sua conta Google";
-  }
-  $("me").innerHTML = fbUser
-    ? `Logado como ${esc(fbUser.name || "Proprietário")} · UID: <code>${esc(fbUser.uid)}</code> <button class="cp" data-copy="${esc(fbUser.uid)}">Copiar UID</button>`
-    : "";
-  updateTraktConnectionUI();
-  render();
+  if (loginBtn) { loginBtn.textContent = fbUser ? "Sair" : "Entrar com Google"; loginBtn.title = fbUser ? `Conectado como ${fbUser.name || fbUser.uid}. Clique para sair.` : "Entrar com sua conta Google"; }
+  $("me").innerHTML = fbUser ? `Logado como ${esc(fbUser.name || "Proprietário")} · UID: <code>${esc(fbUser.uid)}</code> <button class="cp" data-copy="${esc(fbUser.uid)}">Copiar UID</button>` : "";
+  loadCatalog(); render();
 });
-
 $("btn-login").addEventListener("click", () => {
   if (!window.hubFB) { alert("Firebase ainda não carregou. Recarregue a página."); return; }
-  (fbUser ? hubFB.logout() : hubFB.login()).catch(err => alert("Não foi possível entrar: " + err.code));
+  (fbUser ? hubFB.logout() : hubFB.login()).catch(err => alert("Não foi possível entrar: " + (err.code || err.message)));
 });
-
-// Inicia execução
 init();
 
 /* =====================================================================
