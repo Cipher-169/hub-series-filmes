@@ -5,7 +5,7 @@
    CONTROLE DE VERSÃO:
    Sempre que modificar este arquivo incremente HUB_VERSION em +1.
    ===================================================================== */
-const HUB_VERSION = 33;
+const HUB_VERSION = 34;
 window.HUB_VERSION = HUB_VERSION;
 document.getElementById("project-version").textContent = `v${HUB_VERSION}`;
 
@@ -64,6 +64,41 @@ const TMDB_STATUS_PT = {
 function translateTmdbStatus(value) {
   const raw = String(value || "").trim();
   return TMDB_STATUS_PT[raw] || raw;
+}
+
+// Tradução apenas para apresentação: os metadados originais do TMDB permanecem intactos.
+const TMDB_COUNTRY_CODES = {
+  "United States of America":"US", "United States":"US", "United Kingdom":"GB", "South Korea":"KR", "North Korea":"KP",
+  "Russia":"RU", "Türkiye":"TR", "Turkey":"TR", "Czech Republic":"CZ", "Czechia":"CZ", "Taiwan":"TW",
+  "Hong Kong":"HK", "Iran":"IR", "Syria":"SY", "Vietnam":"VN", "Laos":"LA", "Moldova":"MD",
+  "Tanzania":"TZ", "Bolivia":"BO", "Venezuela":"VE", "Brunei":"BN", "Palestine":"PS", "Ivory Coast":"CI",
+  "Côte d'Ivoire":"CI", "Democratic Republic of the Congo":"CD", "Republic of the Congo":"CG", "North Macedonia":"MK",
+  "Swaziland":"SZ", "Eswatini":"SZ", "Micronesia":"FM", "Cape Verde":"CV", "Curaçao":"CW", "Kosovo":"XK",
+  "Afghanistan":"AF", "Albania":"AL", "Algeria":"DZ", "Argentina":"AR", "Australia":"AU", "Austria":"AT",
+  "Bangladesh":"BD", "Belgium":"BE", "Brazil":"BR", "Brasil":"BR", "Canada":"CA", "Chile":"CL", "China":"CN",
+  "Colombia":"CO", "Croatia":"HR", "Cuba":"CU", "Denmark":"DK", "Egypt":"EG", "Finland":"FI", "France":"FR",
+  "Germany":"DE", "Greece":"GR", "Hungary":"HU", "Iceland":"IS", "India":"IN", "Indonesia":"ID", "Iraq":"IQ",
+  "Ireland":"IE", "Israel":"IL", "Italy":"IT", "Japan":"JP", "Kenya":"KE", "Malaysia":"MY", "Mexico":"MX",
+  "Morocco":"MA", "Nepal":"NP", "Netherlands":"NL", "New Zealand":"NZ", "Nigeria":"NG", "Norway":"NO",
+  "Pakistan":"PK", "Peru":"PE", "Philippines":"PH", "Poland":"PL", "Portugal":"PT", "Romania":"RO", "Saudi Arabia":"SA",
+  "Serbia":"RS", "Singapore":"SG", "South Africa":"ZA", "Spain":"ES", "Sweden":"SE", "Switzerland":"CH", "Thailand":"TH",
+  "Ukraine":"UA", "United Arab Emirates":"AE", "Uruguay":"UY", "Uzbekistan":"UZ", "Zimbabwe":"ZW"
+};
+function translateTmdbCountry(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return raw;
+  const code = TMDB_COUNTRY_CODES[raw] || (/^[A-Z]{2}$/.test(raw) ? raw : "");
+  if (!code) return raw;
+  try { return new Intl.DisplayNames(["pt-BR"], { type: "region" }).of(code) || raw; }
+  catch (_) { return raw; }
+}
+function translateTmdbLanguage(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return raw;
+  try {
+    const translated = new Intl.DisplayNames(["pt-BR"], { type: "language" }).of(raw.toLowerCase());
+    return translated && translated.toLowerCase() !== raw.toLowerCase() ? translated : raw.toUpperCase();
+  } catch (_) { return raw.toUpperCase(); }
 }
 
 /* =====================================================================
@@ -447,8 +482,8 @@ async function openItem(id, type, previewData = null) {
           ${item.originalTitle ? `<div><small>TÍTULO ORIGINAL</small><strong>${esc(item.originalTitle)}</strong></div>` : ""}
           ${item.statusText ? `<div><small>SITUAÇÃO</small><strong>${esc(translateTmdbStatus(item.statusText))}</strong></div>` : ""}
           ${item.networks?.length ? `<div><small>EMISSORAS</small><strong>${esc(item.networks.join(" · "))}</strong></div>` : ""}
-          ${item.productionCountries?.length ? `<div><small>PAÍS DE ORIGEM</small><strong>${esc(item.productionCountries.join(" · "))}</strong></div>` : ""}
-          ${item.originalLanguage ? `<div><small>IDIOMA ORIGINAL</small><strong>${esc(item.originalLanguage.toUpperCase())}</strong></div>` : ""}
+          ${item.productionCountries?.length ? `<div><small>PAÍS DE ORIGEM</small><strong>${esc(item.productionCountries.map(translateTmdbCountry).join(" · "))}</strong></div>` : ""}
+          ${item.originalLanguage ? `<div><small>IDIOMA ORIGINAL</small><strong>${esc(translateTmdbLanguage(item.originalLanguage))}</strong></div>` : ""}
           ${item.crew?.length ? `<div><small>${isShow ? "PRODUÇÃO" : "DIREÇÃO"}</small><strong>${esc(item.crew.join(" · "))}</strong></div>` : ""}
         </div>
         <p class="diary-intro detail-overview">${esc(item.overview || "Sem sinopse disponível.")}</p>
