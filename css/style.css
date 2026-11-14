@@ -2605,3 +2605,38 @@ body.discover-mode .top { padding-top:14px; padding-bottom:14px; }
   .brand-name { font-size: 1.08rem; }
   .brand-hub { font-size: .57rem; letter-spacing: .08em; }
 }
+
+/* V64 — garante contraste do seletor personalizado do Diário contra as regras gerais do formulário */
+.diary-form .diary-select-trigger,
+.diary-form .diary-select-trigger:hover,
+.diary-form .diary-select-trigger[aria-expanded="true"] {
+  background:#171613 !important;
+  color:#eee2d0 !important;
+  border:1px solid rgba(220,198,160,.38) !important;
+}
+.diary-form .diary-select-trigger:hover,
+.diary-form .diary-select-trigger[aria-expanded="true"] {
+  background:#29251f !important;
+  border-color:#c9a875 !important;
+}
+.diary-form .diary-select-option,
+.diary-form .diary-select-option:visited {
+  background:transparent !important;
+  color:#eee2d0 !important;
+}
+.diary-form .diary-select-option:hover,
+.diary-form .diary-select-option:focus,
+.diary-form .diary-select-option:not(.is-selected):focus-visible {
+  background:rgba(211,177,125,.24) !important;
+  color:#fff0d4 !important;
+}
+.diary-form .diary-select-option.is-selected {
+  background:rgba(211,177,125,.22) !important;
+  color:#ffe0ad !important;
+  font-weight:700;
+}
+.diary-form .diary-select-option.is-selected:hover,
+.diary-form .diary-select-option.is-selected:focus {
+  background:rgba(211,177,125,.34) !important;
+  color:#fff3dc !important;
+}

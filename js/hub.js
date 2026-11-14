@@ -338,33 +338,51 @@ function getAverageEpisodeRuntime(item){
   const raw=item.episodeRunTime??item.episode_run_time??item.episodeRuntime??item.averageEpisodeRuntime??item.runtime??item.average_episode_runtime;
   if(Array.isArray(raw)){const values=raw.map(Number).filter(n=>Number.isFinite(n)&&n>0);if(values.length)return values.reduce((a,b)=>a+b,0)/values.length;}
   else {const n=Number(raw);if(Number.isFinite(n)&&n>0)return n;}
-  // Some worker responses wrap the TMDB payload instead of returning it at root.
+  // Algumas respostas do catálogo trazem a duração dentro de temporadas/episódios.
   for(const nested of [item.data,item.tv,item.details,item.result,item.payload]){
     const value=getAverageEpisodeRuntime(nested);
     if(value>0)return value;
   }
   return 0;
 }
+function getSeasonEpisodeRuntimeValues(payload){
+  const episodes=Array.isArray(payload?.episodes)?payload.episodes:(Array.isArray(payload?.data?.episodes)?payload.data.episodes:[]);
+  return episodes.map(ep=>Number(ep?.runtime??ep?.episodeRunTime??ep?.episode_run_time??0)).filter(n=>Number.isFinite(n)&&n>0);
+}
 const showRuntimeCache=new Map();
-async function resolveShowEpisodeRuntime(item){
+async function resolveShowEpisodeRuntime(item,seasonNumbers=[]){
   const stored=getAverageEpisodeRuntime(item);
   if(stored>0)return stored;
   const id=String(item?.id||"");
   if(!id)return 0;
-  if(!showRuntimeCache.has(id)){
-    showRuntimeCache.set(id,(async()=>{
+  const seasons=[...new Set(seasonNumbers.map(Number).filter(n=>Number.isInteger(n)&&n>=0))].sort((a,b)=>a-b);
+  const cacheKey=`${id}:${seasons.join(",")}`;
+  if(!showRuntimeCache.has(cacheKey)){
+    showRuntimeCache.set(cacheKey,(async()=>{
       try{
         const response=await fetch(`${TMDB_WORKER_URL}/api/tmdb/tv/${encodeURIComponent(id)}`,{signal:AbortSignal.timeout(12000)});
         if(!response.ok)throw new Error(`TMDB HTTP ${response.status}`);
         const detail=await response.json();
-        return getAverageEpisodeRuntime(detail);
+        const average=getAverageEpisodeRuntime(detail);
+        if(average>0)return average;
+        // Se a ficha principal não trouxer episode_run_time, usa as durações
+        // reais dos episódios retornados pela rota de cada temporada.
+        const seasonResponses=await Promise.all(seasons.map(async number=>{
+          try{
+            const r=await fetch(`${TMDB_WORKER_URL}/api/tmdb/tv/${encodeURIComponent(id)}/season/${number}`,{signal:AbortSignal.timeout(12000)});
+            if(!r.ok)return null;
+            return await r.json();
+          }catch(error){console.warn(`Não foi possível obter os episódios da temporada ${number} da série ${id}`,error);return null;}
+        }));
+        const values=seasonResponses.flatMap(getSeasonEpisodeRuntimeValues);
+        return values.length?values.reduce((sum,n)=>sum+n,0)/values.length:0;
       }catch(error){
         console.warn(`Não foi possível obter a duração média dos episódios da série ${id}`,error);
         return 0;
       }
     })());
   }
-  return showRuntimeCache.get(id);
+  return showRuntimeCache.get(cacheKey);
 }
 function renderStats(){
   const root=$("view"),token=(window.__statsRenderToken=(window.__statsRenderToken||0)+1);
@@ -414,7 +432,16 @@ function renderStats(){
       const item=showsById.get(id)||catalogByKey.get(`show:${id}`);
       return [id,item];
     }).filter(([,item])=>Boolean(item))).values()];
-    const showRuntimes=new Map(await Promise.all(showItems.map(async item=>[String(item.id),await resolveShowEpisodeRuntime(item)])));
+    const seasonsByShowId=new Map();
+    showJourneys.forEach(j=>{
+      const id=String(j.itemId??j.mediaId??j.tmdbId??"");
+      let map=j.seasons;
+      if(typeof map==="string"){try{map=JSON.parse(map)}catch{map={}}}
+      if(Array.isArray(map))map=Object.fromEntries(map.map((v,i)=>[String(v?.number??i+1),v]));
+      const numbers=Object.keys(map&&typeof map==="object"?map:{}).map(Number).filter(Number.isFinite);
+      seasonsByShowId.set(id,[...(seasonsByShowId.get(id)||[]),...numbers]);
+    });
+    const showRuntimes=new Map(await Promise.all(showItems.map(async item=>[String(item.id),await resolveShowEpisodeRuntime(item,seasonsByShowId.get(String(item.id))||[])])));
     showJourneys.forEach(j=>{
       let map=j.seasons;
       if(typeof map==="string"){try{map=JSON.parse(map)}catch{map={}}}
