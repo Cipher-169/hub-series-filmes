@@ -306,6 +306,9 @@ window.hubFB = {
     for (const key of ["status", "startedAt", "endedAt", "notes"]) {
       if (Object.prototype.hasOwnProperty.call(data, key)) payload[key] = String(data[key] ?? "");
     }
+    if (Object.prototype.hasOwnProperty.call(data, "seasons")) {
+      payload.seasons = data.seasons && typeof data.seasons === "object" ? data.seasons : {};
+    }
     for (const key of ["score", "progressSeason", "progressEpisode"]) {
       if (Object.prototype.hasOwnProperty.call(data, key)) payload[key] = key === "score" ? Math.max(0, Math.min(100, Number(data[key]) || 0)) : (data[key] === "" || data[key] == null ? "" : Number(data[key]));
     }
@@ -336,12 +339,23 @@ window.hubFB = {
     const ref = doc(db, "users", OWNER_UID, "mediaLogs", String(logId));
     const snap = await getDoc(ref);
     if (!snap.exists()) throw new Error("Registro do diário não encontrado.");
+    const old = snap.data();
     const payload = { updatedAt: serverTimestamp() };
     if (Object.prototype.hasOwnProperty.call(data, "comment")) payload.comment = String(data.comment ?? "");
     if (Object.prototype.hasOwnProperty.call(data, "watchedAt")) payload.watchedAt = String(data.watchedAt ?? "");
     if (Object.prototype.hasOwnProperty.call(data, "episode")) payload.episode = Number(data.episode);
+    if (Object.prototype.hasOwnProperty.call(data, "journeyId")) {
+      const journeyId = String(data.journeyId || "");
+      if (journeyId) {
+        const journeySnap = await getDoc(doc(db, "users", OWNER_UID, "mediaLogs", journeyId));
+        const journey = journeySnap.exists() ? journeySnap.data() : null;
+        if (!journey || journey.recordType !== "journey" || String(journey.itemId) !== String(old.itemId) || journey.type !== old.type) {
+          throw new Error("A experiência selecionada não pertence a esta obra.");
+        }
+      }
+      payload.journeyId = journeyId;
+    }
     await setDoc(ref, payload, { merge: true });
-    const old = snap.data();
     await cacheDelete(`logs:${old.type}:${old.itemId}`);
   },
 
