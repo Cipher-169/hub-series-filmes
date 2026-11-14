@@ -5,7 +5,7 @@
    CONTROLE DE VERSÃO:
    Sempre que modificar este arquivo incremente HUB_VERSION em +1.
    ===================================================================== */
-const HUB_VERSION = 35;
+const HUB_VERSION = 36;
 window.HUB_VERSION = HUB_VERSION;
 document.getElementById("project-version").textContent = `v${HUB_VERSION}`;
 
@@ -333,24 +333,42 @@ function formatWatchTime(minutes){
   if(hours)return `${hours}h ${mins}min`;
   return `${mins}min`;
 }
-function getAverageEpisodeRuntime(item){
-  if(!item||typeof item!=="object")return 0;
-  const raw=item.episodeRunTime??item.episode_run_time??item.episodeRuntime??item.averageEpisodeRuntime??item.runtime??item.average_episode_runtime;
-  if(Array.isArray(raw)){const values=raw.map(Number).filter(n=>Number.isFinite(n)&&n>0);if(values.length)return values.reduce((a,b)=>a+b,0)/values.length;}
-  else {const n=Number(raw);if(Number.isFinite(n)&&n>0)return n;}
-  // Algumas respostas do catálogo trazem a duração dentro de temporadas/episódios.
-  for(const nested of [item.data,item.tv,item.details,item.result,item.payload]){
-    const value=getAverageEpisodeRuntime(nested);
+function getAverageEpisodeRuntime(item,seen=new Set()){
+  if(!item||typeof item!=="object"||seen.has(item))return 0;
+  seen.add(item);
+  const keys=["episodeRunTime","episode_run_time","episodeRuntime","averageEpisodeRuntime","average_episode_runtime","runtime","runtimeMinutes","episode_runtime","duration"];
+  for(const key of keys){
+    const raw=item[key];
+    if(Array.isArray(raw)){
+      const values=raw.map(Number).filter(n=>Number.isFinite(n)&&n>0);
+      if(values.length)return values.reduce((a,b)=>a+b,0)/values.length;
+    }else if(raw!==undefined&&raw!==null&&raw!==""){
+      const n=Number(raw);if(Number.isFinite(n)&&n>0)return n;
+    }
+  }
+  // O Worker pode encapsular a resposta em diferentes envelopes.
+  for(const key of ["data","tv","details","result","payload","response"]){
+    const value=getAverageEpisodeRuntime(item[key],seen);
     if(value>0)return value;
   }
   return 0;
 }
+function findEpisodeArray(payload,seen=new Set()){
+  if(!payload||typeof payload!=="object"||seen.has(payload))return [];
+  seen.add(payload);
+  if(Array.isArray(payload.episodes))return payload.episodes;
+  for(const key of ["data","tv","details","result","payload","response"]){
+    const found=findEpisodeArray(payload[key],seen);
+    if(found.length)return found;
+  }
+  return [];
+}
 function getSeasonEpisodeRuntimeMap(payload,seasonNumber){
-  const episodes=Array.isArray(payload?.episodes)?payload.episodes:(Array.isArray(payload?.data?.episodes)?payload.data.episodes:[]);
-  const result=new Map();
+  const episodes=findEpisodeArray(payload),result=new Map();
   episodes.forEach(ep=>{
-    const number=Number(ep?.episode_number??ep?.number);
-    const runtime=Number(ep?.runtime??ep?.episodeRunTime??ep?.episode_run_time??0);
+    const number=Number(ep?.episode_number??ep?.episodeNumber??ep?.number);
+    const raw=ep?.runtime??ep?.episodeRunTime??ep?.episode_run_time??ep?.runtimeMinutes??ep?.runtime_minutes??ep?.duration;
+    const runtime=Number(raw);
     if(Number.isInteger(number)&&number>0&&Number.isFinite(runtime)&&runtime>0){
       result.set(`${seasonNumber}:${number}`,runtime);
     }
@@ -367,28 +385,38 @@ async function resolveShowEpisodeRuntimes(item,seasonNumbers=[]){
     showRuntimeCache.set(cacheKey,(async()=>{
       let average=getAverageEpisodeRuntime(item);
       const episodeRuntimes=new Map();
+      let detailStatus="não consultado";
       try{
         const detailResponse=await fetch(`${TMDB_WORKER_URL}/api/tmdb/tv/${encodeURIComponent(id)}`,{signal:AbortSignal.timeout(12000)});
+        detailStatus=String(detailResponse.status);
         if(detailResponse.ok){
           const detail=await detailResponse.json();
           average=getAverageEpisodeRuntime(detail)||average;
         }
-      }catch(error){console.warn(`Não foi possível obter os detalhes da série ${id}`,error);}
-      // Prioriza a duração individual de cada episódio retornada pelo TMDB.
-      // A média da série só será usada como fallback para episódios sem runtime.
+      }catch(error){
+        detailStatus=error?.name||error?.message||"erro de rede";
+        console.warn(`[NEXUS tempo] Falha ao consultar detalhes da série ${id}:`,error);
+      }
+      // Prioriza a duração individual dos episódios; usa a média da série como fallback.
       const seasonResponses=await Promise.all(seasons.map(async number=>{
         try{
           const response=await fetch(`${TMDB_WORKER_URL}/api/tmdb/tv/${encodeURIComponent(id)}/season/${number}`,{signal:AbortSignal.timeout(12000)});
-          if(!response.ok)return {number,payload:null};
+          if(!response.ok){
+            console.warn(`[NEXUS tempo] Série ${id}, temporada ${number}: HTTP ${response.status}`);
+            return {number,payload:null};
+          }
           return {number,payload:await response.json()};
         }catch(error){
-          console.warn(`Não foi possível obter os episódios da temporada ${number} da série ${id}`,error);
+          console.warn(`[NEXUS tempo] Falha ao consultar série ${id}, temporada ${number}:`,error);
           return {number,payload:null};
         }
       }));
       seasonResponses.forEach(({number,payload})=>{
         getSeasonEpisodeRuntimeMap(payload,number).forEach((runtime,key)=>episodeRuntimes.set(key,runtime));
       });
+      if(!average&&!episodeRuntimes.size){
+        console.warn(`[NEXUS tempo] Nenhuma duração encontrada para ${item?.name||item?.title||id}. Detalhes HTTP: ${detailStatus}; temporadas consultadas: ${seasons.join(", ")||"nenhuma"}.`,{item});
+      }
       return {episodes:episodeRuntimes,average};
     })());
   }
