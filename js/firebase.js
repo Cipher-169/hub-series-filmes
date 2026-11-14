@@ -210,14 +210,15 @@ window.hubFB = {
     return logs.filter(x => x.recordType === "journey").sort((a,b) => (b.createdAtMs||0)-(a.createdAtMs||0));
   },
 
-  createJourney: async ({ itemId, type, label, journeyType, startedAt }) => {
+  createJourney: async ({ itemId, type, previousJourneys = [] }) => {
     requireOwner();
-    if (!itemId || !["movie", "show"].includes(type)) throw new Error("Dados inválidos para a jornada.");
+    if (!itemId || !["movie", "show"].includes(type)) throw new Error("Dados inválidos para a experiência.");
+    const latestJourney = [...previousJourneys].sort((a,b) => (b.createdAtMs||0)-(a.createdAtMs||0))[0];
+    const journeyType = !latestJourney ? "first" : latestJourney.status === "completed" ? "rewatch" : "retry";
     const payload = {
       itemId: String(itemId), type, recordType: "journey",
-      label: String(label || "").trim() || "Nova jornada",
-      journeyType: journeyType === "rewatch" ? "rewatch" : "first",
-      status: "in_progress", startedAt: String(startedAt || ""),
+      journeyType,
+      status: "in_progress", startedAt: new Date().toISOString().slice(0,10),
       createdAt: serverTimestamp(),
     };
     const ref = await addDoc(logsCol(), payload);

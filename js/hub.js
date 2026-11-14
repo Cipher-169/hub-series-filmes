@@ -360,7 +360,7 @@ async function openItem(id, type, previewData = null) {
     <div class="db">
       <div class="detail-tabs">
         <button type="button" data-detail-tab="info" aria-selected="true">${isShow ? "Temporadas &amp; Avaliação" : "Avaliação &amp; Info"}</button>
-        ${inCatalog ? `<button type="button" data-detail-tab="diary" aria-selected="false">Diário</button>` : ""}
+        ${inCatalog ? `<button type="button" data-detail-tab="experiences" aria-selected="false">Minhas experiências</button><button type="button" data-detail-tab="diary" aria-selected="false">Diário</button>` : ""}
       </div>
 
       <!-- Seção: Informações e Avaliação -->
@@ -388,6 +388,11 @@ async function openItem(id, type, previewData = null) {
         ${item.cast?.length ? `<div class="detail-cast"><h3>Elenco principal</h3><p>${esc(item.cast.join(" · "))}</p></div>` : ""}
         ${inCatalog && isOwner() ? `<button type="button" class="remove-catalog-btn" id="btn-remove-catalog">Remover da minha biblioteca</button>` : !inCatalog ? `<button type="button" class="tmdb-add-btn" id="btn-add-preview" ${!fbUser?"disabled":""}>${fbUser?"Adicionar à minha biblioteca":"Entre para adicionar"}</button>` : ""}
         ${isShow && inCatalog ? `<div id="series-seasons-container"><div class="msg">Carregando temporadas e episódios…</div></div>` : ""}
+      </section>
+
+      <!-- Seção: Minhas experiências -->
+      <section id="detail-experiences" class="hidden">
+        <div id="experiences-content" class="msg">Carregando experiências…</div>
       </section>
 
       <!-- Seção: Diário -->
@@ -666,23 +671,21 @@ function renderDiaryEntries(id, type, logs) {
   const diaryLogs = logs.filter(x => x.recordType !== "journey");
   const activeJourneys = journeys.filter(x => x.status === "in_progress");
   $("diary-content").className = "";
-  const journeyForm = editable ? `
+  const journeyPanel = editable ? `
     <section class="journey-panel">
-      <div class="journey-panel-head"><div><h3>Jornadas de visualização</h3><p class="diary-intro">Cada tentativa ou reassistida fica registrada separadamente.</p></div>
-      <button type="button" id="btn-new-journey">+ Iniciar nova jornada</button></div>
-      <form id="journey-form" class="journey-form hidden">
-        <label>Nome da jornada<input name="label" maxlength="80" placeholder="Ex.: Primeira vez, Reassistida…"></label>
-        <label>Tipo<select name="journeyType"><option value="first">Primeira experiência</option><option value="rewatch">Reassistida</option></select></label>
-        <label>Data de início (opcional)<input name="startedAt" type="date"></label>
-        <div class="diary-actions"><button type="submit">Criar jornada</button><button type="button" id="btn-cancel-journey">Cancelar</button></div>
-        <span id="journey-status" class="diary-status" role="status"></span>
-      </form>
-      <div class="journey-list">${journeys.length ? journeys.map((j,i) => `<article class="journey-card"><div class="diary-entry-head"><strong>${esc(j.label || `Jornada ${journeys.length-i}`)}</strong><span class="meta">${j.status === "in_progress" ? "Em andamento" : j.status === "completed" ? "Concluída" : "Abandonada"}</span></div><small>${j.journeyType === "rewatch" ? "Reassistida" : "Primeira experiência"}${j.startedAt ? ` · Início: ${diaryDate(j.startedAt)}` : " · Data não informada"}</small><div class="diary-actions">${j.status === "in_progress" ? `<button type="button" data-journey-status="completed" data-journey-id="${esc(j.id)}">Marcar como concluída</button><button type="button" data-journey-status="abandoned" data-journey-id="${esc(j.id)}">Abandonar</button>` : `<button type="button" data-journey-status="in_progress" data-journey-id="${esc(j.id)}">Retomar</button>`}</div></article>`).join("") : `<div class="msg">Nenhuma jornada criada ainda. Use o botão acima para iniciar sua primeira experiência.</div>`}</div>
-    </section>` : `<h3>Jornadas de visualização</h3><div class="journey-list">${journeys.map(j=>`<article class="journey-card"><strong>${esc(j.label||"Jornada")}</strong><small>${j.status||""}</small></article>`).join("")}</div>`;
+      <div class="journey-panel-head"><div><h3>Minhas experiências</h3><p class="diary-intro">Cada vez que você começa novamente, uma nova experiência é registrada.</p></div>
+      <button type="button" id="btn-new-journey">+ Iniciar nova experiência</button></div>
+      <div class="journey-list">${journeys.length ? journeys.map((j,i) => {
+        const ordinal = journeys.length - i;
+        const journeyName = `Experiência ${String(ordinal).padStart(2,"0")}`;
+        const kind = j.journeyType === "first" ? "Primeira experiência" : j.journeyType === "retry" ? "Nova tentativa" : "Reassistida";
+        return `<article class="journey-card"><div class="diary-entry-head"><strong>${journeyName}</strong><span class="meta">${j.status === "in_progress" ? "Em andamento" : j.status === "completed" ? "Concluída" : "Abandonada"}</span></div><small>${kind}${j.startedAt ? ` · Início: ${diaryDate(j.startedAt)}` : " · Data não informada"}</small><div class="diary-actions">${j.status === "in_progress" ? `<button type="button" data-journey-status="completed" data-journey-id="${esc(j.id)}">Marcar como concluída</button><button type="button" data-journey-status="abandoned" data-journey-id="${esc(j.id)}">Abandonar</button>` : `<button type="button" data-journey-status="in_progress" data-journey-id="${esc(j.id)}">Retomar</button>`}</div></article>`;
+      }).join("") : `<div class="msg">Você ainda não iniciou nenhuma experiência com esta obra.</div>`}</div>
+    </section>` : `<section class="journey-panel"><h3>Minhas experiências</h3><div class="journey-list">${journeys.map((j,i)=>`<article class="journey-card"><strong>Experiência ${String(journeys.length-i).padStart(2,"0")}</strong><small>${j.status||""}</small></article>`).join("")}</div></section>`;
   const form = editable ? `
     <p class="diary-intro">Registre suas impressões ${isShow ? "episódio por episódio" : "sobre o filme"}.</p>
     <form class="diary-form" id="diary-form">
-      <div class="wide-field"><label for="diary-journey">Jornada</label><select id="diary-journey" required>${activeJourneys.map(j=>`<option value="${esc(j.id)}">${esc(j.label||"Jornada")}</option>`).join("")}</select>${activeJourneys.length ? "" : `<small>Crie ou retome uma jornada para adicionar registros vinculados.</small>`}</div>
+      <div class="wide-field"><label for="diary-journey">Experiência</label><select id="diary-journey" required>${activeJourneys.map(j=>`<option value="${esc(j.id)}">Experiência ${String(journeys.length-journeys.findIndex(x=>x.id===j.id)).padStart(2,"0")}</option>`).join("")}</select>${activeJourneys.length ? "" : `<small>Inicie ou retome uma experiência em “Minhas experiências” para adicionar registros vinculados.</small>`}</div>
       ${isShow ? `<div><label for="diary-episode">Episódio</label><input id="diary-episode" type="number" min="0" step="1" value="1" required></div>` : ""}
       <div><label for="diary-date">Data</label><input id="diary-date" type="date" value="${localDateISO()}">
         <label style="display:flex;align-items:center;gap:7px;margin-top:8px"><input id="diary-forgot" type="checkbox" style="width:auto"> Esqueci a data</label>
@@ -691,7 +694,8 @@ function renderDiaryEntries(id, type, logs) {
       <button type="submit" ${activeJourneys.length ? "" : "disabled"}>Adicionar registro</button><span class="diary-status" id="diary-status" role="status"></span>
     </form>` : `<p class="diary-intro">Diário público de impressões.</p>`;
 
-  $("diary-content").innerHTML = journeyForm + form + `
+  $("experiences-content").innerHTML = journeyPanel;
+  $("diary-content").innerHTML = form + `
     <h3 style="font:600 1.2rem var(--serif);margin:0 0 12px">Registros <span class="meta">${diaryLogs.length} registro(s)</span></h3>
     <div class="diary-list">${diaryLogs.length
       ? diaryLogs.map(log => `
@@ -701,7 +705,7 @@ function renderDiaryEntries(id, type, logs) {
             <span class="meta">${diaryDate(log.watchedAt)}</span>
           </div>
           <p>${esc(log.comment)}</p>
-          <small>${esc(journeys.find(j=>j.id===log.journeyId)?.label || "Registro antigo — sem jornada vinculada")}</small>
+          <small>${(() => { const index = journeys.findIndex(j=>j.id===log.journeyId); return index >= 0 ? `Experiência ${String(journeys.length-index).padStart(2,"0")}` : "Registro antigo — sem experiência vinculada"; })()}</small>
           ${editable ? `<div class="diary-actions">
             <button type="button" data-edit-log="${esc(log.id)}">Editar</button>
             <button type="button" data-delete-log="${esc(log.id)}">Excluir</button>
@@ -712,13 +716,11 @@ function renderDiaryEntries(id, type, logs) {
 
   if (!editable) return;
 
-  $("btn-new-journey")?.addEventListener("click", () => $("journey-form")?.classList.remove("hidden"));
-  $("btn-cancel-journey")?.addEventListener("click", () => $("journey-form")?.classList.add("hidden"));
-  $("journey-form")?.addEventListener("submit", async ev => {
-    ev.preventDefault(); const data = new FormData(ev.currentTarget); const status = $("journey-status");
-    const button = ev.currentTarget.querySelector('button[type="submit"]'); button.disabled = true; status.textContent = "Criando…";
-    try { await hubFB.createJourney({ itemId:id, type, label:data.get("label"), journeyType:data.get("journeyType"), startedAt:data.get("startedAt") }); await loadDiary(id,type); }
-    catch(err) { status.textContent = `Não foi possível criar: ${err.code || err.message}`; button.disabled = false; }
+  $("btn-new-journey")?.addEventListener("click", async ev => {
+    const button = ev.currentTarget;
+    button.disabled = true; button.textContent = "Criando…";
+    try { await hubFB.createJourney({ itemId:id, type, previousJourneys:journeys }); await loadDiary(id,type); }
+    catch(err) { alert(`Não foi possível iniciar a experiência: ${err.code || err.message}`); button.disabled = false; button.textContent = "+ Iniciar nova experiência"; }
   });
 
   $("diary-form")?.addEventListener("submit", async ev => {
@@ -865,8 +867,8 @@ document.addEventListener("click", e => {
   if (detailTab) {
     const name = detailTab.dataset.detailTab;
     document.querySelectorAll("[data-detail-tab]").forEach(b => b.setAttribute("aria-selected", String(b === detailTab)));
-    ["info", "diary"].forEach(t => document.getElementById(`detail-${t}`)?.classList.toggle("hidden", t !== name));
-    if (name === "diary" && activeItem) loadDiary(activeItem.id, activeItem.type);
+    ["info", "experiences", "diary"].forEach(t => document.getElementById(`detail-${t}`)?.classList.toggle("hidden", t !== name));
+    if ((name === "diary" || name === "experiences") && activeItem) loadDiary(activeItem.id, activeItem.type);
     return;
   }
   const forgot = e.target.closest("#diary-forgot");
