@@ -5,7 +5,7 @@
    CONTROLE DE VERSÃO:
    Sempre que modificar este arquivo incremente HUB_VERSION em +1.
    ===================================================================== */
-const HUB_VERSION = 22;
+const HUB_VERSION = 23;
 window.HUB_VERSION = HUB_VERSION;
 document.getElementById("project-version").textContent = `v${HUB_VERSION}`;
 
@@ -732,7 +732,7 @@ function renderDiaryEntries(id, type, logs) {
 
   $("btn-new-journey")?.addEventListener("click", async ev=>{const b=ev.currentTarget;b.disabled=true;b.textContent="Criando…";try{await hubFB.createJourney({itemId:id,type});await loadCatalog();await loadDiary(id,type);}catch(err){alert(`Não foi possível iniciar a experiência: ${err.message||err.code}`);b.disabled=false;b.textContent="+ Iniciar nova experiência";}});
 
-  const experienceRoot = $("diary-content");
+  const experienceRoot = $("experiences-content");
   experienceRoot.onclick = async e => {
     const stepButton = e.target.closest("[data-number-step]");
     if (stepButton) {

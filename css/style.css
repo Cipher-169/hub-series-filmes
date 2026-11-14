@@ -1760,3 +1760,60 @@ body.discover-mode .top { padding-top:14px; padding-bottom:14px; }
   border-color:rgba(220,198,160,.42);
 }
 .number-stepper button:active { transform:scale(.94); }
+
+
+/* V31 — ações rápidas sobre os pôsteres em Descobrir e Pesquisa */
+.discover-card { overflow:visible; }
+.discover-poster-wrap {
+  position:relative; overflow:hidden; border-radius:4px 4px 0 0;
+  isolation:isolate; background:#24211d;
+}
+.discover-poster-wrap>img,.discover-poster-wrap>.discover-no-poster {
+  display:block; width:100%; aspect-ratio:2/3; object-fit:cover;
+}
+.poster-quick-actions {
+  position:absolute; right:9px; bottom:10px; z-index:2;
+  display:flex; flex-direction:column; gap:7px;
+  opacity:0; transform:translateY(7px);
+  transition:opacity .2s ease,transform .2s ease;
+}
+.discover-card:hover .poster-quick-actions,
+.discover-card:focus-within .poster-quick-actions {
+  opacity:1; transform:translateY(0);
+}
+.poster-action {
+  width:38px!important; height:38px; min-width:38px;
+  display:grid; place-items:center; padding:0!important;
+  border:1px solid rgba(232,210,173,.42)!important;
+  border-radius:50%!important;
+  color:#f1d5a7!important;
+  background:rgba(18,17,16,.84)!important;
+  backdrop-filter:blur(8px);
+  box-shadow:0 3px 12px rgba(0,0,0,.28);
+  cursor:pointer; transition:background .18s,border-color .18s,transform .18s,opacity .18s;
+}
+.poster-action svg { width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round; }
+.poster-action:first-child svg { fill:currentColor;stroke:none; }
+.poster-action:hover:not(:disabled) {
+  background:#d5b27d!important; color:#211b13!important;
+  border-color:#e7c995!important; transform:scale(1.07);
+}
+.poster-action:disabled { opacity:.35;cursor:not-allowed; }
+.poster-action.is-loading { opacity:.65; animation:poster-action-pulse .8s ease-in-out infinite alternate; }
+@keyframes poster-action-pulse { from{transform:scale(.94)} to{transform:scale(1.04)} }
+.poster-in-library {
+  position:absolute; left:7px; bottom:9px; z-index:2;
+  padding:5px 7px; border-radius:5px;
+  color:#ead5b4; background:rgba(18,17,16,.86);
+  border:1px solid rgba(232,210,173,.28);
+  font-size:.62rem; line-height:1;
+}
+.discover-card-info { padding:9px; }
+.discover-card-info .discover-rating { margin-bottom:0; }
+@media(hover:none) {
+  .poster-quick-actions { opacity:1; transform:none; }
+}
+@media(max-width:520px) {
+  .poster-quick-actions { right:7px;bottom:8px;gap:6px; }
+  .poster-action { width:35px!important;height:35px;min-width:35px; }
+}
