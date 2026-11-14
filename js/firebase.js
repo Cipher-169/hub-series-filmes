@@ -172,6 +172,27 @@ window.hubFB = {
     await setDoc(notePath(id, itemType), { inCatalog: false, removedAt: serverTimestamp() }, { merge: true });
     await cacheDelete("personal_catalog");
   },
+  // Exclusão definitiva: remove o documento da biblioteca e todos os registros
+  // de experiência/diário associados ao mesmo item e tipo. Diferente de
+  // removeCatalogItem, nenhum dado pessoal da obra é preservado.
+  deleteAllItemData: async (id, type) => {
+    requireOwner();
+    const itemId = String(id);
+    const itemType = type === "tv" ? "show" : type;
+    if (!itemId || !["movie", "show"].includes(itemType)) throw new Error("Obra inválida para exclusão.");
+
+    const relatedQuery = query(logsCol(), where("itemId", "==", itemId), where("type", "==", itemType));
+    const related = await getDocsFromServer(relatedQuery);
+    for (const record of related.docs) await deleteDoc(record.ref);
+    await deleteDoc(notePath(itemId, itemType));
+
+    await Promise.all([
+      cacheDelete("personal_catalog"),
+      cacheDelete(`note:${itemType}:${itemId}`),
+      cacheDelete(`logs:${itemType}:${itemId}`),
+      cacheDelete(itemType === "movie" ? "all_movie_notes" : "all_show_notes"),
+    ]);
+  },
 
   /* Notas de um item (plataforma, impressão geral, etc.) */
   getItemNote: async (itemId, type) =>
@@ -326,10 +347,20 @@ window.hubFB = {
     // Convertê-lo para String destrói os dados como "[object Object]" e impede
     // que o progresso seja recuperado ao reabrir a série.
     if (Object.prototype.hasOwnProperty.call(data, "seasons")) {
-      if (!data.seasons || typeof data.seasons !== "object" || Array.isArray(data.seasons)) {
-        throw new Error("Dados de temporadas inválidos.");
+      let seasons = data.seasons;
+      // Normaliza formatos legados antes de persistir: o formato canônico é
+      // um mapa { "1": { watchedEpisodes: [...], ... }, "2": { ... } }.
+      if (typeof seasons === "string" && seasons.trim()) {
+        try { seasons = JSON.parse(seasons); } catch { seasons = {}; }
       }
-      payload.seasons = data.seasons;
+      if (Array.isArray(seasons)) {
+        seasons = Object.fromEntries(seasons.map((season, index) => [
+          String(season?.number ?? index + 1),
+          season && typeof season === "object" ? season : {}
+        ]));
+      }
+      if (!seasons || typeof seasons !== "object") seasons = {};
+      payload.seasons = seasons;
     }
     for (const key of ["score", "progressSeason", "progressEpisode"]) {
       if (Object.prototype.hasOwnProperty.call(data, key)) payload[key] = key === "score" ? Math.max(0, Math.min(100, Number(data[key]) || 0)) : (data[key] === "" || data[key] == null ? "" : Number(data[key]));

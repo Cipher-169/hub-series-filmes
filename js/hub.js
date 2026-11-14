@@ -431,7 +431,7 @@ async function openItem(id, type, previewData = null) {
         </div>
         <p class="diary-intro detail-overview">${esc(item.overview || "Sem sinopse disponível.")}</p>
         ${item.cast?.length ? `<div class="detail-cast"><h3>Elenco principal</h3><p>${esc(item.cast.join(" · "))}</p></div>` : ""}
-        ${inCatalog && isOwner() ? `<button type="button" class="remove-catalog-btn" id="btn-remove-catalog">Remover da minha biblioteca</button>` : !inCatalog ? `<div class="detail-add-controls"><label for="detail-add-status">Adicionar como</label><select id="detail-add-status" ${!fbUser?"disabled":""}><option value="plantowatch">Quero assistir</option><option value="watching">Assistindo</option><option value="completed">Concluído</option><option value="paused">Pausado</option><option value="dropped">Abandonado</option></select><button type="button" class="tmdb-add-btn" id="btn-add-preview" ${!fbUser?"disabled":""}>${fbUser?"Adicionar à minha biblioteca":"Entre para adicionar"}</button></div>` : ""}
+        ${inCatalog && isOwner() ? `<div class="catalog-removal-actions"><button type="button" class="remove-catalog-btn" id="btn-remove-catalog">Remover da minha biblioteca</button><button type="button" class="delete-all-media-btn" id="btn-delete-all-media">Excluir todos os dados</button></div>` : !inCatalog ? `<div class="detail-add-controls"><label for="detail-add-status">Adicionar como</label><select id="detail-add-status" ${!fbUser?"disabled":""}><option value="plantowatch">Quero assistir</option><option value="watching">Assistindo</option><option value="completed">Concluído</option><option value="paused">Pausado</option><option value="dropped">Abandonado</option></select><button type="button" class="tmdb-add-btn" id="btn-add-preview" ${!fbUser?"disabled":""}>${fbUser?"Adicionar à minha biblioteca":"Entre para adicionar"}</button></div>` : ""}
         ${isShow && inCatalog ? `<div id="series-seasons-container"><div class="msg">Carregando temporadas e episódios…</div></div>` : ""}
       </section>
 
@@ -458,6 +458,26 @@ async function openItem(id, type, previewData = null) {
     if (!approved) return;
     try { await hubFB.removeCatalogItem(id,type); await loadCatalog(); d.close(); }
     catch(err) { alert(`Não foi possível remover: ${err.code || err.message}`); }
+  });
+  $("btn-delete-all-media")?.addEventListener("click", async () => {
+    if (!isOwner()) { alert("Somente o proprietário pode excluir os dados desta obra."); return; }
+    const approved = await showAppConfirm(
+      `Excluir permanentemente todos os dados de “${item.title}”? Isso apagará a obra da biblioteca, todas as experiências, o progresso de temporadas e episódios, avaliações e todos os registros do Diário. Esta ação não pode ser desfeita.`,
+      "Excluir todos os dados?",
+      "Excluir tudo",
+      true
+    );
+    if (!approved) return;
+    const button = $("btn-delete-all-media");
+    if (button) { button.disabled = true; button.textContent = "Excluindo…"; }
+    try {
+      await hubFB.deleteAllItemData(id, type);
+      await loadCatalog();
+      d.close();
+    } catch (err) {
+      if (button) { button.disabled = false; button.textContent = "Excluir todos os dados"; }
+      alert(`Não foi possível excluir todos os dados: ${err.code || err.message}`);
+    }
   });
   $("btn-add-preview")?.addEventListener("click", async () => {
     if (!fbUser) return;
@@ -582,8 +602,28 @@ async function loadSeriesSeasons(showId, savedNote, selectedJourneyId = "") {
         !activeItem || String(activeItem.id) !== String(showId) || activeItem.type !== "show" ||
         !$("dlg")?.open) return;
     const selectedJourney = journeys.find(j => String(j.id) === String(selectedJourneyId)) || journeys.find(j => j.status === "in_progress") || journeys[0] || null;
+    // Compatibilidade com dados legados: versões anteriores podem ter gravado
+    // temporadas como array ou JSON textual. A interface e o Firestore usam um
+    // mapa por número de temporada; normalizamos antes de qualquer alteração.
+    const normalizeSeasonMap = value => {
+      if (value && typeof value === "object" && !Array.isArray(value)) return value;
+      if (Array.isArray(value)) {
+        return Object.fromEntries(value.map((season, index) => [
+          String(season?.number ?? index + 1),
+          season && typeof season === "object" ? season : {}
+        ]));
+      }
+      if (typeof value === "string" && value.trim()) {
+        try {
+          const parsed = JSON.parse(value);
+          if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) return parsed;
+          if (Array.isArray(parsed)) return normalizeSeasonMap(parsed);
+        } catch { /* dado legado não estruturado: começa vazio sem bloquear o progresso */ }
+      }
+      return {};
+    };
     // Compatibilidade: registros antigos salvos na obra continuam visíveis caso não haja jornada.
-    const savedSeasons = selectedJourney?.seasons || (journeys.length ? {} : (savedNote?.seasons || {}));
+    const savedSeasons = normalizeSeasonMap(selectedJourney?.seasons ?? (journeys.length ? {} : savedNote?.seasons));
     const saveSeasonData = async () => {
       if (selectedJourney) await hubFB.updateJourney(selectedJourney.id, { seasons: savedSeasons });
       else if (fbUser) await hubFB.saveItemNote(showId, "show", { seasons: savedSeasons });
