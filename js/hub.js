@@ -5,7 +5,7 @@
    CONTROLE DE VERSÃO:
    Sempre que modificar este arquivo incremente HUB_VERSION em +1.
    ===================================================================== */
-const HUB_VERSION = 19;
+const HUB_VERSION = 21;
 window.HUB_VERSION = HUB_VERSION;
 document.getElementById("project-version").textContent = `v${HUB_VERSION}`;
 
@@ -662,28 +662,46 @@ function renderDiaryEntries(id, type, logs) {
     ((b.createdAtMs ?? 0) - (a.createdAtMs ?? 0)));
 
   const isShow = type === "show";
+  const journeys = logs.filter(x => x.recordType === "journey").sort((a,b) => (b.createdAtMs||0)-(a.createdAtMs||0));
+  const diaryLogs = logs.filter(x => x.recordType !== "journey");
+  const activeJourneys = journeys.filter(x => x.status === "in_progress");
   $("diary-content").className = "";
+  const journeyForm = editable ? `
+    <section class="journey-panel">
+      <div class="journey-panel-head"><div><h3>Jornadas de visualização</h3><p class="diary-intro">Cada tentativa ou reassistida fica registrada separadamente.</p></div>
+      <button type="button" id="btn-new-journey">+ Iniciar nova jornada</button></div>
+      <form id="journey-form" class="journey-form hidden">
+        <label>Nome da jornada<input name="label" maxlength="80" placeholder="Ex.: Primeira vez, Reassistida…"></label>
+        <label>Tipo<select name="journeyType"><option value="first">Primeira experiência</option><option value="rewatch">Reassistida</option></select></label>
+        <label>Data de início (opcional)<input name="startedAt" type="date"></label>
+        <div class="diary-actions"><button type="submit">Criar jornada</button><button type="button" id="btn-cancel-journey">Cancelar</button></div>
+        <span id="journey-status" class="diary-status" role="status"></span>
+      </form>
+      <div class="journey-list">${journeys.length ? journeys.map((j,i) => `<article class="journey-card"><div class="diary-entry-head"><strong>${esc(j.label || `Jornada ${journeys.length-i}`)}</strong><span class="meta">${j.status === "in_progress" ? "Em andamento" : j.status === "completed" ? "Concluída" : "Abandonada"}</span></div><small>${j.journeyType === "rewatch" ? "Reassistida" : "Primeira experiência"}${j.startedAt ? ` · Início: ${diaryDate(j.startedAt)}` : " · Data não informada"}</small><div class="diary-actions">${j.status === "in_progress" ? `<button type="button" data-journey-status="completed" data-journey-id="${esc(j.id)}">Marcar como concluída</button><button type="button" data-journey-status="abandoned" data-journey-id="${esc(j.id)}">Abandonar</button>` : `<button type="button" data-journey-status="in_progress" data-journey-id="${esc(j.id)}">Retomar</button>`}</div></article>`).join("") : `<div class="msg">Nenhuma jornada criada ainda. Use o botão acima para iniciar sua primeira experiência.</div>`}</div>
+    </section>` : `<h3>Jornadas de visualização</h3><div class="journey-list">${journeys.map(j=>`<article class="journey-card"><strong>${esc(j.label||"Jornada")}</strong><small>${j.status||""}</small></article>`).join("")}</div>`;
   const form = editable ? `
     <p class="diary-intro">Registre suas impressões ${isShow ? "episódio por episódio" : "sobre o filme"}.</p>
     <form class="diary-form" id="diary-form">
+      <div class="wide-field"><label for="diary-journey">Jornada</label><select id="diary-journey" required>${activeJourneys.map(j=>`<option value="${esc(j.id)}">${esc(j.label||"Jornada")}</option>`).join("")}</select>${activeJourneys.length ? "" : `<small>Crie ou retome uma jornada para adicionar registros vinculados.</small>`}</div>
       ${isShow ? `<div><label for="diary-episode">Episódio</label><input id="diary-episode" type="number" min="0" step="1" value="1" required></div>` : ""}
       <div><label for="diary-date">Data</label><input id="diary-date" type="date" value="${localDateISO()}">
         <label style="display:flex;align-items:center;gap:7px;margin-top:8px"><input id="diary-forgot" type="checkbox" style="width:auto"> Esqueci a data</label>
       </div>
       <div class="wide-field"><label for="diary-comment">Seu comentário</label><textarea id="diary-comment" maxlength="10000" placeholder="O que achou?" required></textarea></div>
-      <button type="submit">Adicionar registro</button><span class="diary-status" id="diary-status" role="status"></span>
+      <button type="submit" ${activeJourneys.length ? "" : "disabled"}>Adicionar registro</button><span class="diary-status" id="diary-status" role="status"></span>
     </form>` : `<p class="diary-intro">Diário público de impressões.</p>`;
 
-  $("diary-content").innerHTML = form + `
-    <h3 style="font:600 1.2rem var(--serif);margin:0 0 12px">Histórico <span class="meta">${sorted.length} registro(s)</span></h3>
-    <div class="diary-list">${sorted.length
-      ? sorted.map(log => `
+  $("diary-content").innerHTML = journeyForm + form + `
+    <h3 style="font:600 1.2rem var(--serif);margin:0 0 12px">Registros <span class="meta">${diaryLogs.length} registro(s)</span></h3>
+    <div class="diary-list">${diaryLogs.length
+      ? diaryLogs.map(log => `
         <article class="diary-entry" data-log-entry="${esc(log.id)}">
           <div class="diary-entry-head">
             <strong>${isShow ? `Episódio ${Number(log.episode) || "?"}` : "Sessão"}</strong>
             <span class="meta">${diaryDate(log.watchedAt)}</span>
           </div>
           <p>${esc(log.comment)}</p>
+          <small>${esc(journeys.find(j=>j.id===log.journeyId)?.label || "Registro antigo — sem jornada vinculada")}</small>
           ${editable ? `<div class="diary-actions">
             <button type="button" data-edit-log="${esc(log.id)}">Editar</button>
             <button type="button" data-delete-log="${esc(log.id)}">Excluir</button>
@@ -694,7 +712,16 @@ function renderDiaryEntries(id, type, logs) {
 
   if (!editable) return;
 
-  $("diary-form").addEventListener("submit", async ev => {
+  $("btn-new-journey")?.addEventListener("click", () => $("journey-form")?.classList.remove("hidden"));
+  $("btn-cancel-journey")?.addEventListener("click", () => $("journey-form")?.classList.add("hidden"));
+  $("journey-form")?.addEventListener("submit", async ev => {
+    ev.preventDefault(); const data = new FormData(ev.currentTarget); const status = $("journey-status");
+    const button = ev.currentTarget.querySelector('button[type="submit"]'); button.disabled = true; status.textContent = "Criando…";
+    try { await hubFB.createJourney({ itemId:id, type, label:data.get("label"), journeyType:data.get("journeyType"), startedAt:data.get("startedAt") }); await loadDiary(id,type); }
+    catch(err) { status.textContent = `Não foi possível criar: ${err.code || err.message}`; button.disabled = false; }
+  });
+
+  $("diary-form")?.addEventListener("submit", async ev => {
     ev.preventDefault();
     const status = $("diary-status");
     const episode = isShow ? Number($("diary-episode").value) : null;
@@ -706,7 +733,9 @@ function renderDiaryEntries(id, type, logs) {
     const submit = ev.currentTarget.querySelector('button[type="submit"]');
     submit.disabled = true; status.textContent = "Salvando…";
     try {
-      await hubFB.addItemLog({ itemId: id, type, episode, watchedAt, comment });
+      const journeyId = $("diary-journey")?.value;
+      if (!journeyId) { status.textContent = "Inicie ou retome uma jornada antes de registrar."; submit.disabled = false; return; }
+      await hubFB.addItemLog({ itemId: id, type, journeyId, episode, watchedAt, comment });
       await loadDiary(id, type);
     } catch (err) {
       status.textContent = "Não foi possível salvar: " + (err.code || err.message);
@@ -728,6 +757,12 @@ function renderDiaryEntries(id, type, logs) {
   };
 
   $("diary-content").onclick = async e => {
+    const journeyAction = e.target.closest("[data-journey-status]");
+    if (journeyAction) {
+      try { await hubFB.updateJourney(journeyAction.dataset.journeyId, { status: journeyAction.dataset.journeyStatus, ...(journeyAction.dataset.journeyStatus === "in_progress" ? { endedAt: "" } : { endedAt: localDateISO() }) }); await loadDiary(id,type); }
+      catch(err) { alert(`Não foi possível atualizar a jornada: ${err.code || err.message}`); }
+      return;
+    }
     const edit = e.target.closest("[data-edit-log]");
     if (edit) {
       const log = logs.find(x => String(x.id) === String(edit.dataset.editLog));

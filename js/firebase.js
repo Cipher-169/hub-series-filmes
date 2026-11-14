@@ -204,11 +204,47 @@ window.hubFB = {
     });
   },
 
-  addItemLog: async ({ itemId, type, episode, watchedAt, comment }) => {
+  /* Jornadas independentes: armazenadas em mediaLogs para aproveitar as regras atuais. */
+  getItemJourneys: async (itemId, type) => {
+    const logs = await window.hubFB.getItemLogs(itemId, type);
+    return logs.filter(x => x.recordType === "journey").sort((a,b) => (b.createdAtMs||0)-(a.createdAtMs||0));
+  },
+
+  createJourney: async ({ itemId, type, label, journeyType, startedAt }) => {
+    requireOwner();
+    if (!itemId || !["movie", "show"].includes(type)) throw new Error("Dados inválidos para a jornada.");
+    const payload = {
+      itemId: String(itemId), type, recordType: "journey",
+      label: String(label || "").trim() || "Nova jornada",
+      journeyType: journeyType === "rewatch" ? "rewatch" : "first",
+      status: "in_progress", startedAt: String(startedAt || ""),
+      createdAt: serverTimestamp(),
+    };
+    const ref = await addDoc(logsCol(), payload);
+    await cacheDelete(`logs:${type}:${itemId}`);
+    return ref.id;
+  },
+
+  updateJourney: async (journeyId, data) => {
+    requireOwner();
+    const ref = doc(db, "users", OWNER_UID, "mediaLogs", String(journeyId));
+    const snap = await getDoc(ref);
+    if (!snap.exists() || snap.data().recordType !== "journey") throw new Error("Jornada não encontrada.");
+    const payload = { updatedAt: serverTimestamp() };
+    for (const key of ["label", "status", "startedAt", "endedAt"]) {
+      if (Object.prototype.hasOwnProperty.call(data, key)) payload[key] = String(data[key] ?? "");
+    }
+    if (data.status === "in_progress" && !Object.prototype.hasOwnProperty.call(data, "endedAt")) payload.endedAt = "";
+    await setDoc(ref, payload, { merge: true });
+    const old = snap.data(); await cacheDelete(`logs:${old.type}:${old.itemId}`);
+  },
+
+  addItemLog: async ({ itemId, type, journeyId, episode, watchedAt, comment }) => {
     requireOwner();
     if (!itemId || !["movie", "show"].includes(type)) throw new Error("Dados inválidos para o registro.");
     const payload = {
       itemId: String(itemId), type,
+      ...(journeyId ? { journeyId: String(journeyId) } : {}),
       ...(episode != null ? { episode: Number(episode) } : {}),
       watchedAt: watchedAt ?? "",
       comment: String(comment ?? ""),
