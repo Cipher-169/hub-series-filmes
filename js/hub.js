@@ -468,8 +468,7 @@ async function openItem(id, type, previewData = null) {
       </section>
     </div>`;
 
-  // O diálogo já foi aberto no início de openItem; não chamar showModal()
-  // novamente, pois isso lança InvalidStateError e interrompe a renderização.
+  d.showModal();
   $("btn-remove-catalog")?.addEventListener("click", async () => {
     if (!isOwner()) { alert("Somente o proprietário pode remover títulos da biblioteca."); return; }
     const approved = await showAppConfirm(
@@ -509,7 +508,9 @@ async function openItem(id, type, previewData = null) {
     try {
       await hubFB.addCatalogItem({ ...previewData, status:$("detail-add-status")?.value || "plantowatch" });
       await loadCatalog();
-      d.close();
+      // Mantém o modal aberto durante a transição da prévia para a ficha completa.
+      // Fechar e reabrir aqui dispara o evento "close", que invalida o token
+      // da nova abertura e pode deixar a interface presa em "Abrindo detalhes…".
       await openItem(id, type);
     } catch(err) {
       if (button) { button.disabled = false; button.textContent = "Adicionar à minha biblioteca"; }
