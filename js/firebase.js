@@ -275,9 +275,8 @@ window.hubFB = {
     const snap = await getDoc(ref);
     if (!snap.exists() || snap.data().recordType !== "journey") throw new Error("Experiência não encontrada.");
     const old = snap.data();
-    if (["completed", "abandoned"].includes(old.status) && ["in_progress", "paused"].includes(data.status)) {
-      throw new Error("Uma experiência concluída ou abandonada não pode ser reaberta. Inicie uma nova experiência para continuar.");
-    }
+    // A edição manual permite corrigir um status marcado por engano.
+    // A retomada pelas ações rápidas continua sujeita à regra de uma única experiência ativa.
     if (data.status === "in_progress" && old.status !== "in_progress") {
       await cacheDelete(`logs:${old.type}:${old.itemId}`);
       const journeys = await window.hubFB.getItemJourneys(old.itemId, old.type);
