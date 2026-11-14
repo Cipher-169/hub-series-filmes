@@ -1624,3 +1624,25 @@ body.discover-mode .top { padding-top:14px; padding-bottom:14px; }
 .journey-card .diary-entry-head strong { font-family:var(--serif); }
 .diary-form button:disabled { opacity:.45; cursor:not-allowed; }
 @media (max-width:600px) { .journey-panel-head { display:grid; } .journey-panel-head > button { justify-self:start; } }
+
+/* Painel de edição individual das experiências */
+.journey-panel button:disabled { opacity:.42; cursor:not-allowed; }
+.journey-notice { margin:0 0 12px; padding:10px 12px; border:1px solid var(--line); border-radius:9px; color:var(--muted); font-size:.86rem; }
+.journey-card-meta { display:flex; flex-wrap:wrap; gap:12px; margin:9px 0 2px; color:var(--muted); font-size:.82rem; }
+.journey-edit-dialog { width:min(620px,calc(100% - 28px)); max-width:620px; max-height:min(86vh,760px); padding:0; border:1px solid var(--line); border-radius:14px; color:var(--text); background:var(--panel, #1d1b19); box-shadow:0 24px 80px rgba(0,0,0,.55); }
+.journey-edit-dialog::backdrop { background:rgba(0,0,0,.72); backdrop-filter:blur(3px); }
+.journey-edit-form { display:grid; gap:18px; padding:20px; }
+.journey-edit-head { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; }
+.journey-edit-head h3 { margin:0 0 5px; font:600 1.3rem var(--serif); }
+.journey-edit-head .diary-intro { margin:0; }
+.journey-edit-close { width:34px; height:34px; padding:0!important; border-radius:50%!important; font-size:1.35rem!important; line-height:1; }
+.journey-edit-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:13px; }
+.journey-edit-grid label { display:grid; gap:6px; color:var(--muted); font-size:.84rem; }
+.journey-edit-grid input,.journey-edit-grid select,.journey-edit-grid textarea { width:100%; min-width:0; padding:10px 11px; border:1px solid var(--line); border-radius:8px; color:var(--text); background:rgba(0,0,0,.22); font:inherit; }
+.journey-edit-grid textarea { resize:vertical; }
+.journey-edit-wide { grid-column:1/-1; }
+.journey-edit-footer { display:flex; align-items:center; justify-content:flex-end; flex-wrap:wrap; gap:9px; }
+.journey-edit-footer .diary-status { margin-right:auto; }
+.journey-edit-footer button { border:1px solid var(--line); border-radius:999px; padding:9px 14px; color:var(--text); background:rgba(255,255,255,.05); cursor:pointer; }
+.journey-edit-footer .journey-save-btn { color:#1a0d08; background:var(--sun); border-color:transparent; font-weight:650; }
+@media(max-width:560px) { .journey-edit-grid { grid-template-columns:1fr; } .journey-edit-wide { grid-column:auto; } .journey-edit-form { padding:16px; } }

@@ -210,34 +210,71 @@ window.hubFB = {
     return logs.filter(x => x.recordType === "journey").sort((a,b) => (b.createdAtMs||0)-(a.createdAtMs||0));
   },
 
-  createJourney: async ({ itemId, type, previousJourneys = [] }) => {
+  createJourney: async ({ itemId, type }) => {
     requireOwner();
     if (!itemId || !["movie", "show"].includes(type)) throw new Error("Dados inválidos para a experiência.");
+    await cacheDelete(`logs:${type}:${itemId}`);
+    const previousJourneys = await window.hubFB.getItemJourneys(itemId, type);
+    if (previousJourneys.some(j => j.status === "in_progress")) {
+      throw new Error("Já existe uma experiência em andamento para esta obra. Conclua, pause ou abandone-a antes de iniciar outra.");
+    }
     const latestJourney = [...previousJourneys].sort((a,b) => (b.createdAtMs||0)-(a.createdAtMs||0))[0];
     const journeyType = !latestJourney ? "first" : latestJourney.status === "completed" ? "rewatch" : "retry";
     const payload = {
-      itemId: String(itemId), type, recordType: "journey",
-      journeyType,
-      status: "in_progress", startedAt: new Date().toISOString().slice(0,10),
+      itemId: String(itemId), type, recordType: "journey", journeyType,
+      status: "in_progress", startedAt: new Date().toISOString().slice(0,10), endedAt: "",
+      score: 0, progressSeason: "", progressEpisode: "", notes: "",
       createdAt: serverTimestamp(),
     };
     const ref = await addDoc(logsCol(), payload);
     await cacheDelete(`logs:${type}:${itemId}`);
+    await window.hubFB.syncOverallStatus(itemId, type);
     return ref.id;
+  },
+
+  syncOverallStatus: async (itemId, type) => {
+    requireOwner();
+    const journeys = await window.hubFB.getItemJourneys(itemId, type);
+    if (!journeys.length) return null;
+    const ordered = [...journeys].sort((a,b) => (b.createdAtMs||0)-(a.createdAtMs||0));
+    const active = ordered.find(j => j.status === "in_progress");
+    const paused = ordered.find(j => j.status === "paused");
+    const latest = ordered[0];
+    const status = active ? "watching" : latest?.status === "paused" ? "paused" : latest?.status === "abandoned" ? "dropped" : latest?.status === "completed" ? "completed" : "plantowatch";
+    await setDoc(notePath(itemId, type), { status, updatedAt: serverTimestamp() }, { merge: true });
+    await cacheDelete(`note:${type}:${itemId}`);
+    await cacheDelete("personal_catalog");
+    return status;
   },
 
   updateJourney: async (journeyId, data) => {
     requireOwner();
     const ref = doc(db, "users", OWNER_UID, "mediaLogs", String(journeyId));
     const snap = await getDoc(ref);
-    if (!snap.exists() || snap.data().recordType !== "journey") throw new Error("Jornada não encontrada.");
+    if (!snap.exists() || snap.data().recordType !== "journey") throw new Error("Experiência não encontrada.");
+    const old = snap.data();
+    if (["completed", "abandoned"].includes(old.status) && ["in_progress", "paused"].includes(data.status)) {
+      throw new Error("Uma experiência concluída ou abandonada não pode ser reaberta. Inicie uma nova experiência para continuar.");
+    }
+    if (data.status === "in_progress" && old.status !== "in_progress") {
+      await cacheDelete(`logs:${old.type}:${old.itemId}`);
+      const journeys = await window.hubFB.getItemJourneys(old.itemId, old.type);
+      if (journeys.some(j => j.id !== String(journeyId) && j.status === "in_progress")) {
+        throw new Error("Outra experiência desta obra já está em andamento. Pause ou encerre-a antes de retomar esta.");
+      }
+    }
     const payload = { updatedAt: serverTimestamp() };
-    for (const key of ["label", "status", "startedAt", "endedAt"]) {
+    for (const key of ["status", "startedAt", "endedAt", "notes"]) {
       if (Object.prototype.hasOwnProperty.call(data, key)) payload[key] = String(data[key] ?? "");
     }
-    if (data.status === "in_progress" && !Object.prototype.hasOwnProperty.call(data, "endedAt")) payload.endedAt = "";
+    for (const key of ["score", "progressSeason", "progressEpisode"]) {
+      if (Object.prototype.hasOwnProperty.call(data, key)) payload[key] = key === "score" ? Math.max(0, Math.min(100, Number(data[key]) || 0)) : (data[key] === "" || data[key] == null ? "" : Number(data[key]));
+    }
+    if (data.status === "in_progress" || data.status === "paused") payload.endedAt = "";
+    else if (data.status && !Object.prototype.hasOwnProperty.call(data, "endedAt")) payload.endedAt = old.endedAt || new Date().toISOString().slice(0,10);
     await setDoc(ref, payload, { merge: true });
-    const old = snap.data(); await cacheDelete(`logs:${old.type}:${old.itemId}`);
+    await cacheDelete(`logs:${old.type}:${old.itemId}`);
+    await window.hubFB.syncOverallStatus(old.itemId, old.type);
   },
 
   addItemLog: async ({ itemId, type, journeyId, episode, watchedAt, comment }) => {

@@ -661,131 +661,70 @@ function diaryDate(value) {
 }
 
 function renderDiaryEntries(id, type, logs) {
-  const editable = !!fbUser;
-  const sorted = [...logs].sort((a, b) =>
-    String(b.watchedAt ?? "").localeCompare(String(a.watchedAt ?? "")) ||
-    ((b.createdAtMs ?? 0) - (a.createdAtMs ?? 0)));
-
-  const isShow = type === "show";
-  const journeys = logs.filter(x => x.recordType === "journey").sort((a,b) => (b.createdAtMs||0)-(a.createdAtMs||0));
+  const editable = !!fbUser, isShow = type === "show";
+  const journeys = logs.filter(x => x.recordType === "journey").sort((a,b)=>(b.createdAtMs||0)-(a.createdAtMs||0));
   const diaryLogs = logs.filter(x => x.recordType !== "journey");
-  const activeJourneys = journeys.filter(x => x.status === "in_progress");
+  const active = journeys.filter(j => j.status === "in_progress");
+  const paused = journeys.filter(j => j.status === "paused");
+  const label = j => `Experiência ${String(journeys.length - journeys.findIndex(x=>x.id===j.id)).padStart(2,"0")}`;
+  const statusText = {in_progress:"Em andamento",paused:"Pausada",completed:"Concluída",abandoned:"Abandonada"};
+  const kindText = j => j.journeyType === "first" ? "Primeira experiência" : j.journeyType === "retry" ? "Nova tentativa" : "Reassistida";
+  const overall = active.length ? "watching" : journeys[0]?.status === "paused" ? "paused" : journeys[0]?.status === "abandoned" ? "dropped" : journeys[0]?.status === "completed" ? "completed" : "plantowatch";
+  if (journeys.length && editable) {
+    const sel = $("modal-status-select"), trigger = $("status-dropdown-trigger");
+    const labels = {watching:"Assistindo",paused:"Pausado",dropped:"Abandonado",completed:"Concluído",plantowatch:"Quero assistir"};
+    if (sel) { sel.value = overall; sel.disabled = true; }
+    if (trigger) { trigger.disabled = true; trigger.title = "Status atualizado automaticamente pelas experiências"; }
+    if ($("status-dropdown-label")) $("status-dropdown-label").textContent = labels[overall];
+  }
   $("diary-content").className = "";
   const journeyPanel = editable ? `
     <section class="journey-panel">
-      <div class="journey-panel-head"><div><h3>Minhas experiências</h3><p class="diary-intro">Cada vez que você começa novamente, uma nova experiência é registrada.</p></div>
-      <button type="button" id="btn-new-journey">+ Iniciar nova experiência</button></div>
-      <div class="journey-list">${journeys.length ? journeys.map((j,i) => {
-        const ordinal = journeys.length - i;
-        const journeyName = `Experiência ${String(ordinal).padStart(2,"0")}`;
-        const kind = j.journeyType === "first" ? "Primeira experiência" : j.journeyType === "retry" ? "Nova tentativa" : "Reassistida";
-        return `<article class="journey-card"><div class="diary-entry-head"><strong>${journeyName}</strong><span class="meta">${j.status === "in_progress" ? "Em andamento" : j.status === "completed" ? "Concluída" : "Abandonada"}</span></div><small>${kind}${j.startedAt ? ` · Início: ${diaryDate(j.startedAt)}` : " · Data não informada"}</small><div class="diary-actions">${j.status === "in_progress" ? `<button type="button" data-journey-status="completed" data-journey-id="${esc(j.id)}">Marcar como concluída</button><button type="button" data-journey-status="abandoned" data-journey-id="${esc(j.id)}">Abandonar</button>` : `<button type="button" data-journey-status="in_progress" data-journey-id="${esc(j.id)}">Retomar</button>`}</div></article>`;
-      }).join("") : `<div class="msg">Você ainda não iniciou nenhuma experiência com esta obra.</div>`}</div>
-    </section>` : `<section class="journey-panel"><h3>Minhas experiências</h3><div class="journey-list">${journeys.map((j,i)=>`<article class="journey-card"><strong>Experiência ${String(journeys.length-i).padStart(2,"0")}</strong><small>${j.status||""}</small></article>`).join("")}</div></section>`;
-  const form = editable ? `
-    <p class="diary-intro">Registre suas impressões ${isShow ? "episódio por episódio" : "sobre o filme"}.</p>
-    <form class="diary-form" id="diary-form">
-      <div class="wide-field"><label for="diary-journey">Experiência</label><select id="diary-journey" required>${activeJourneys.map(j=>`<option value="${esc(j.id)}">Experiência ${String(journeys.length-journeys.findIndex(x=>x.id===j.id)).padStart(2,"0")}</option>`).join("")}</select>${activeJourneys.length ? "" : `<small>Inicie ou retome uma experiência em “Minhas experiências” para adicionar registros vinculados.</small>`}</div>
-      ${isShow ? `<div><label for="diary-episode">Episódio</label><input id="diary-episode" type="number" min="0" step="1" value="1" required></div>` : ""}
-      <div><label for="diary-date">Data</label><input id="diary-date" type="date" value="${localDateISO()}">
-        <label style="display:flex;align-items:center;gap:7px;margin-top:8px"><input id="diary-forgot" type="checkbox" style="width:auto"> Esqueci a data</label>
-      </div>
-      <div class="wide-field"><label for="diary-comment">Seu comentário</label><textarea id="diary-comment" maxlength="10000" placeholder="O que achou?" required></textarea></div>
-      <button type="submit" ${activeJourneys.length ? "" : "disabled"}>Adicionar registro</button><span class="diary-status" id="diary-status" role="status"></span>
-    </form>` : `<p class="diary-intro">Diário público de impressões.</p>`;
-
+      <div class="journey-panel-head"><div><h3>Minhas experiências</h3><p class="diary-intro">Gerencie separadamente o status, a nota, as datas e o progresso de cada experiência.</p></div>
+      <button type="button" id="btn-new-journey" ${active.length ? "disabled title=\"Já existe uma experiência em andamento\"" : ""}>+ Iniciar nova experiência</button></div>
+      ${active.length ? `<p class="journey-notice">Já existe uma experiência em andamento nesta obra. Pause, conclua ou abandone-a antes de iniciar outra.</p>` : paused.length ? `<p class="journey-notice">Você tem uma experiência pausada. É possível retomá-la ou iniciar uma nova tentativa.</p>` : ""}
+      <div class="journey-list">${journeys.length ? journeys.map(j=>`<article class="journey-card">
+        <div class="diary-entry-head"><strong>${label(j)}</strong><span class="meta">${statusText[j.status]||"Não definido"}</span></div>
+        <small>${kindText(j)}${j.startedAt?` · Início: ${diaryDate(j.startedAt)}`:" · Data de início não informada"}${j.endedAt?` · Término: ${diaryDate(j.endedAt)}`:""}</small>
+        <div class="journey-card-meta">${isShow && (j.progressSeason||j.progressEpisode)?`<span>Temporada ${j.progressSeason||"—"} · Episódio ${j.progressEpisode||"—"}</span>`:""}<span>${Number(j.score)>0?`Nota ${j.score}/100`:"Sem nota individual"}</span></div>
+        <div class="diary-actions"><button type="button" data-edit-journey="${esc(j.id)}">Editar experiência</button>
+        ${j.status==="in_progress"?`<button type="button" data-journey-status="paused" data-journey-id="${esc(j.id)}">Pausar</button><button type="button" data-journey-status="completed" data-journey-id="${esc(j.id)}">Concluir</button><button type="button" data-journey-status="abandoned" data-journey-id="${esc(j.id)}">Abandonar</button>`:j.status==="paused"?`<button type="button" data-journey-status="in_progress" data-journey-id="${esc(j.id)}" ${active.length?"disabled":""}>Retomar</button>`:""}</div>
+      </article>`).join(""):`<div class="msg">Você ainda não iniciou nenhuma experiência com esta obra.</div>`}</div>
+      <dialog class="journey-edit-dialog" id="journey-edit-dialog"><form id="journey-edit-form" class="journey-edit-form">
+        <div class="journey-edit-head"><div><h3>Editar experiência</h3><p class="diary-intro">As alterações afetam somente esta experiência.</p></div><button type="button" id="journey-edit-close" class="journey-edit-close">×</button></div>
+        <input type="hidden" name="journeyId"><div class="journey-edit-grid">
+          <label>Status<select name="status"><option value="in_progress">Em andamento</option><option value="paused">Pausada</option><option value="completed">Concluída</option><option value="abandoned">Abandonada</option></select></label>
+          <label>Nota individual (0–100)<input name="score" type="number" min="0" max="100" step="1" placeholder="Não avaliada"></label>
+          <label>Data de início<input name="startedAt" type="date"></label><label>Data de conclusão<input name="endedAt" type="date"></label>
+          ${isShow?`<label>Temporada atual<input name="progressSeason" type="number" min="0" step="1"></label><label>Episódio atual<input name="progressEpisode" type="number" min="0" step="1"></label>`:""}
+          <label class="journey-edit-wide">Observações desta experiência<textarea name="notes" rows="4" maxlength="10000" placeholder="Anotações sobre esta jornada…"></textarea></label>
+        </div><div class="journey-edit-footer"><span id="journey-edit-status" class="diary-status" role="status"></span><button type="button" id="journey-edit-cancel">Cancelar</button><button type="submit" class="journey-save-btn">Salvar alterações</button></div>
+      </form></dialog>
+    </section>` : `<section class="journey-panel"><h3>Minhas experiências</h3><div class="journey-list">${journeys.map(j=>`<article class="journey-card"><strong>${label(j)}</strong><small>${statusText[j.status]||j.status||""}</small></article>`).join("")}</div></section>`;
+  const form = editable ? `<p class="diary-intro">Registre suas impressões ${isShow?"episódio por episódio":"sobre o filme"}.</p><form class="diary-form" id="diary-form">
+    <div class="wide-field"><label for="diary-journey">Experiência</label><select id="diary-journey" required>${active.map(j=>`<option value="${esc(j.id)}">${label(j)}</option>`).join("")}</select>${active.length?"":`<small>Inicie ou retome uma experiência em “Minhas experiências” para adicionar registros vinculados.</small>`}</div>
+    ${isShow?`<div><label for="diary-episode">Episódio</label><input id="diary-episode" type="number" min="0" step="1" value="1" required></div>`:""}
+    <div><label for="diary-date">Data</label><input id="diary-date" type="date" value="${localDateISO()}"><label style="display:flex;align-items:center;gap:7px;margin-top:8px"><input id="diary-forgot" type="checkbox" style="width:auto"> Esqueci a data</label></div>
+    <div class="wide-field"><label for="diary-comment">Seu comentário</label><textarea id="diary-comment" maxlength="10000" placeholder="O que achou?" required></textarea></div><button type="submit" ${active.length?"":"disabled"}>Adicionar registro</button><span class="diary-status" id="diary-status" role="status"></span></form>` : `<p class="diary-intro">Diário público de impressões.</p>`;
   $("experiences-content").innerHTML = journeyPanel;
-  $("diary-content").innerHTML = form + `
-    <h3 style="font:600 1.2rem var(--serif);margin:0 0 12px">Registros <span class="meta">${diaryLogs.length} registro(s)</span></h3>
-    <div class="diary-list">${diaryLogs.length
-      ? diaryLogs.map(log => `
-        <article class="diary-entry" data-log-entry="${esc(log.id)}">
-          <div class="diary-entry-head">
-            <strong>${isShow ? `Episódio ${Number(log.episode) || "?"}` : "Sessão"}</strong>
-            <span class="meta">${diaryDate(log.watchedAt)}</span>
-          </div>
-          <p>${esc(log.comment)}</p>
-          <small>${(() => { const index = journeys.findIndex(j=>j.id===log.journeyId); return index >= 0 ? `Experiência ${String(journeys.length-index).padStart(2,"0")}` : "Registro antigo — sem experiência vinculada"; })()}</small>
-          ${editable ? `<div class="diary-actions">
-            <button type="button" data-edit-log="${esc(log.id)}">Editar</button>
-            <button type="button" data-delete-log="${esc(log.id)}">Excluir</button>
-          </div>` : ""}
-        </article>`).join("")
-      : `<div class="msg">Ainda não há registros para este título.</div>`}
-    </div>`;
-
+  $("diary-content").innerHTML = form + `<h3 style="font:600 1.2rem var(--serif);margin:0 0 12px">Registros <span class="meta">${diaryLogs.length} registro(s)</span></h3><div class="diary-list">${diaryLogs.length?diaryLogs.map(log=>`<article class="diary-entry" data-log-entry="${esc(log.id)}"><div class="diary-entry-head"><strong>${isShow?`Episódio ${Number(log.episode)||"?"}`:"Sessão"}</strong><span class="meta">${diaryDate(log.watchedAt)}</span></div><p>${esc(log.comment)}</p><small>${journeys.some(j=>j.id===log.journeyId)?label(journeys.find(j=>j.id===log.journeyId)):"Registro antigo — sem experiência vinculada"}</small>${editable?`<div class="diary-actions"><button type="button" data-edit-log="${esc(log.id)}">Editar</button><button type="button" data-delete-log="${esc(log.id)}">Excluir</button></div>`:""}</article>`).join(""):`<div class="msg">Ainda não há registros para este título.</div>`}</div>`;
   if (!editable) return;
 
-  $("btn-new-journey")?.addEventListener("click", async ev => {
-    const button = ev.currentTarget;
-    button.disabled = true; button.textContent = "Criando…";
-    try { await hubFB.createJourney({ itemId:id, type, previousJourneys:journeys }); await loadDiary(id,type); }
-    catch(err) { alert(`Não foi possível iniciar a experiência: ${err.code || err.message}`); button.disabled = false; button.textContent = "+ Iniciar nova experiência"; }
+  $("btn-new-journey")?.addEventListener("click", async ev=>{const b=ev.currentTarget;b.disabled=true;b.textContent="Criando…";try{await hubFB.createJourney({itemId:id,type});await loadCatalog();await loadDiary(id,type);}catch(err){alert(`Não foi possível iniciar a experiência: ${err.message||err.code}`);b.disabled=false;b.textContent="+ Iniciar nova experiência";}});
+
+  const dialog=$("journey-edit-dialog"), editForm=$("journey-edit-form");
+  $("experiences-content").addEventListener("click",async e=>{
+    const edit=e.target.closest("[data-edit-journey]");
+    if(edit){const j=journeys.find(x=>String(x.id)===String(edit.dataset.editJourney));if(!j||!dialog||!editForm)return;editForm.elements.journeyId.value=j.id;editForm.elements.status.value=j.status||"in_progress";[...editForm.elements.status.options].forEach(o=>{o.disabled=["completed","abandoned"].includes(j.status)&&["in_progress","paused"].includes(o.value);});editForm.elements.score.value=Number(j.score)>0?j.score:"";editForm.elements.startedAt.value=j.startedAt||"";editForm.elements.endedAt.value=j.endedAt||"";if(editForm.elements.progressSeason)editForm.elements.progressSeason.value=j.progressSeason??"";if(editForm.elements.progressEpisode)editForm.elements.progressEpisode.value=j.progressEpisode??"";editForm.elements.notes.value=j.notes||"";$("journey-edit-status").textContent="";dialog.showModal();return;}
+    const action=e.target.closest("[data-journey-status]");if(action){action.disabled=true;const status=action.dataset.journeyStatus;try{await hubFB.updateJourney(action.dataset.journeyId,{status,...(status==="completed"||status==="abandoned"?{endedAt:localDateISO()}:{})});await loadCatalog();await loadDiary(id,type);}catch(err){alert(`Não foi possível atualizar: ${err.message||err.code}`);action.disabled=false;}return;}
+    if(e.target.closest("#journey-edit-close,#journey-edit-cancel")){dialog?.close();}
   });
+  editForm?.addEventListener("submit",async e=>{e.preventDefault();const data=new FormData(editForm),status=String(data.get("status")||"in_progress"),raw=String(data.get("score")||"").trim(),score=raw===""?0:Number(raw),msg=$("journey-edit-status");if(!Number.isInteger(score)||score<0||score>100){msg.textContent="A nota deve estar entre 0 e 100.";return;}const payload={status,score,startedAt:String(data.get("startedAt")||""),endedAt:String(data.get("endedAt")||""),notes:String(data.get("notes")||"").trim()};if(isShow){const a=String(data.get("progressSeason")||"").trim(),b=String(data.get("progressEpisode")||"").trim();payload.progressSeason=a===""?"":Number(a);payload.progressEpisode=b===""?"":Number(b);if([payload.progressSeason,payload.progressEpisode].some(v=>v!==""&&(!Number.isInteger(v)||v<0))){msg.textContent="Temporada e episódio devem ser inteiros positivos ou zero.";return;}}if(status==="in_progress"||status==="paused")payload.endedAt="";const save=editForm.querySelector('button[type="submit"]');save.disabled=true;msg.textContent="Salvando…";try{await hubFB.updateJourney(String(data.get("journeyId")),payload);dialog.close();await loadCatalog();await loadDiary(id,type);}catch(err){msg.textContent=err.message||err.code||"Erro ao salvar.";save.disabled=false;}});
+  $("journey-edit-close")?.addEventListener("click",()=>dialog?.close());$("journey-edit-cancel")?.addEventListener("click",()=>dialog?.close());
 
-  $("diary-form")?.addEventListener("submit", async ev => {
-    ev.preventDefault();
-    const status = $("diary-status");
-    const episode = isShow ? Number($("diary-episode").value) : null;
-    const forgot = $("diary-forgot").checked;
-    const watchedAt = forgot ? "" : $("diary-date").value;
-    const comment = $("diary-comment").value.trim();
-    if (!comment) { status.textContent = "Preencha o comentário."; return; }
-
-    const submit = ev.currentTarget.querySelector('button[type="submit"]');
-    submit.disabled = true; status.textContent = "Salvando…";
-    try {
-      const journeyId = $("diary-journey")?.value;
-      if (!journeyId) { status.textContent = "Inicie ou retome uma jornada antes de registrar."; submit.disabled = false; return; }
-      await hubFB.addItemLog({ itemId: id, type, journeyId, episode, watchedAt, comment });
-      await loadDiary(id, type);
-    } catch (err) {
-      status.textContent = "Não foi possível salvar: " + (err.code || err.message);
-      submit.disabled = false;
-    }
-  });
-
-  $("diary-content").onsubmit = async ev => {
-    const form = ev.target.closest("[data-save-log]");
-    if (!form) return;
-    ev.preventDefault();
-    const data = new FormData(form);
-    const payload = { comment:String(data.get("comment")||"").trim(), watchedAt:String(data.get("watchedAt")||"") };
-    if (isShow) { payload.episode = Number(data.get("episode")); if (!Number.isInteger(payload.episode) || payload.episode < 0) { alert("Número de episódio inválido."); return; } }
-    if (!payload.comment) { alert("O comentário não pode ficar vazio."); return; }
-    const save = form.querySelector('button[type="submit"]'); save.disabled = true; save.textContent = "Salvando…";
-    try { await hubFB.updateItemLog(form.dataset.saveLog, payload); await loadDiary(id,type); }
-    catch(err) { save.disabled = false; save.textContent = "Tentar novamente"; alert(`Não foi possível editar: ${err.code || err.message}`); }
-  };
-
-  $("diary-content").onclick = async e => {
-    const journeyAction = e.target.closest("[data-journey-status]");
-    if (journeyAction) {
-      try { await hubFB.updateJourney(journeyAction.dataset.journeyId, { status: journeyAction.dataset.journeyStatus, ...(journeyAction.dataset.journeyStatus === "in_progress" ? { endedAt: "" } : { endedAt: localDateISO() }) }); await loadDiary(id,type); }
-      catch(err) { alert(`Não foi possível atualizar a jornada: ${err.code || err.message}`); }
-      return;
-    }
-    const edit = e.target.closest("[data-edit-log]");
-    if (edit) {
-      const log = logs.find(x => String(x.id) === String(edit.dataset.editLog));
-      const article = edit.closest("[data-log-entry]");
-      if (!log || !article) return;
-      article.innerHTML = `<form class="diary-edit-form" data-save-log="${esc(log.id)}">
-        ${isShow ? `<label>Episódio<input name="episode" type="number" min="0" step="1" value="${Number(log.episode)||1}" required></label>` : ""}
-        <label>Data<input name="watchedAt" type="date" value="${esc(log.watchedAt||"")}"></label>
-        <label>Comentário<textarea name="comment" maxlength="10000" required>${esc(log.comment||"")}</textarea></label>
-        <div class="diary-actions"><button type="submit">Salvar alterações</button><button type="button" data-cancel-edit>Cancelar</button></div>
-      </form>`;
-      return;
-    }
-    if (e.target.closest("[data-cancel-edit]")) { await loadDiary(id,type); return; }
-    const del = e.target.closest("[data-delete-log]");
-    if (del) {
-      if (!confirm("Excluir este registro?")) return;
-      try { await hubFB.deleteItemLog(del.dataset.deleteLog); await loadDiary(id, type); }
-      catch (err) { alert("Não foi possível excluir: " + (err.code || err.message)); }
-    }
-  };
+  $("diary-form")?.addEventListener("submit",async ev=>{ev.preventDefault();const status=$("diary-status"),episode=isShow?Number($("diary-episode").value):null,watchedAt=$("diary-forgot").checked?"":$("diary-date").value,comment=$("diary-comment").value.trim();if(!comment){status.textContent="Preencha o comentário.";return;}const submit=ev.currentTarget.querySelector('button[type="submit"]');submit.disabled=true;status.textContent="Salvando…";try{const journeyId=$("diary-journey")?.value;if(!journeyId)throw new Error("Inicie ou retome uma experiência antes de registrar.");await hubFB.addItemLog({itemId:id,type,journeyId,episode,watchedAt,comment});await loadDiary(id,type);}catch(err){status.textContent="Não foi possível salvar: "+(err.code||err.message);submit.disabled=false;}});
+  $("diary-content").onsubmit=async ev=>{const f=ev.target.closest("[data-save-log]");if(!f)return;ev.preventDefault();const d=new FormData(f),payload={comment:String(d.get("comment")||"").trim(),watchedAt:String(d.get("watchedAt")||"")};if(isShow){payload.episode=Number(d.get("episode"));if(!Number.isInteger(payload.episode)||payload.episode<0){alert("Número de episódio inválido.");return;}}if(!payload.comment){alert("O comentário não pode ficar vazio.");return;}const b=f.querySelector('button[type="submit"]');b.disabled=true;try{await hubFB.updateItemLog(f.dataset.saveLog,payload);await loadDiary(id,type);}catch(err){b.disabled=false;alert(`Não foi possível editar: ${err.code||err.message}`);}};
+  $("diary-content").onclick=async e=>{const edit=e.target.closest("[data-edit-log]");if(edit){const log=logs.find(x=>String(x.id)===String(edit.dataset.editLog)),article=edit.closest("[data-log-entry]");if(!log||!article)return;article.innerHTML=`<form class="diary-edit-form" data-save-log="${esc(log.id)}">${isShow?`<label>Episódio<input name="episode" type="number" min="0" step="1" value="${Number(log.episode)||1}" required></label>`:""}<label>Data<input name="watchedAt" type="date" value="${esc(log.watchedAt||"")}"></label><label>Comentário<textarea name="comment" maxlength="10000" required>${esc(log.comment||"")}</textarea></label><div class="diary-actions"><button type="submit">Salvar alterações</button><button type="button" data-cancel-edit>Cancelar</button></div></form>`;return;}if(e.target.closest("[data-cancel-edit]")){await loadDiary(id,type);return;}const del=e.target.closest("[data-delete-log]");if(del){if(!confirm("Excluir este registro?"))return;try{await hubFB.deleteItemLog(del.dataset.deleteLog);await loadDiary(id,type);}catch(err){alert("Não foi possível excluir: "+(err.code||err.message));}}};
 }
 
 async function loadDiary(id, type) {
