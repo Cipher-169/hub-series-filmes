@@ -334,9 +334,16 @@ function formatWatchTime(minutes){
   return `${mins}min`;
 }
 function getAverageEpisodeRuntime(item){
-  const raw=item?.episodeRunTime??item?.episode_run_time??item?.episodeRuntime??item?.averageEpisodeRuntime??item?.runtime;
-  if(Array.isArray(raw)){const values=raw.map(Number).filter(n=>Number.isFinite(n)&&n>0);return values.length?values.reduce((a,b)=>a+b,0)/values.length:0;}
-  const n=Number(raw);return Number.isFinite(n)&&n>0?n:0;
+  if(!item||typeof item!=="object")return 0;
+  const raw=item.episodeRunTime??item.episode_run_time??item.episodeRuntime??item.averageEpisodeRuntime??item.runtime??item.average_episode_runtime;
+  if(Array.isArray(raw)){const values=raw.map(Number).filter(n=>Number.isFinite(n)&&n>0);if(values.length)return values.reduce((a,b)=>a+b,0)/values.length;}
+  else {const n=Number(raw);if(Number.isFinite(n)&&n>0)return n;}
+  // Some worker responses wrap the TMDB payload instead of returning it at root.
+  for(const nested of [item.data,item.tv,item.details,item.result,item.payload]){
+    const value=getAverageEpisodeRuntime(nested);
+    if(value>0)return value;
+  }
+  return 0;
 }
 const showRuntimeCache=new Map();
 async function resolveShowEpisodeRuntime(item){
@@ -398,16 +405,32 @@ function renderStats(){
       if(runtime>0){movieMinutes+=runtime;movieViews++;}else unestimatedMovies++;
     });
     const showJourneys=journeys.filter(j=>j.type==="show");
-    const showItems=[...new Map(showJourneys.map(j=>[String(j.itemId),catalogByKey.get(`show:${j.itemId}`)]).filter(([,item])=>Boolean(item))).values()];
+    // Use the dedicated shows collection as the primary lookup. This avoids
+    // losing episode runtimes when the journey's itemId is stored with a
+    // different primitive type or catalog key representation.
+    const showsById=new Map(shows.map(item=>[String(item.id),item]));
+    const showItems=[...new Map(showJourneys.map(j=>{
+      const id=String(j.itemId??j.mediaId??j.tmdbId??"");
+      const item=showsById.get(id)||catalogByKey.get(`show:${id}`);
+      return [id,item];
+    }).filter(([,item])=>Boolean(item))).values()];
     const showRuntimes=new Map(await Promise.all(showItems.map(async item=>[String(item.id),await resolveShowEpisodeRuntime(item)])));
     showJourneys.forEach(j=>{
-      let map=j.seasons;if(typeof map==="string"){try{map=JSON.parse(map)}catch{map={}}}
+      let map=j.seasons;
+      if(typeof map==="string"){try{map=JSON.parse(map)}catch{map={}}}
       if(Array.isArray(map))map=Object.fromEntries(map.map((v,i)=>[String(v?.number??i+1),v]));
-      const runtime=showRuntimes.get(String(j.itemId))||0;
+      const itemId=String(j.itemId??j.mediaId??j.tmdbId??"");
+      const item=showsById.get(itemId)||catalogByKey.get(`show:${itemId}`);
+      const runtime=showRuntimes.get(String(item?.id??itemId))||0;
       if(map&&typeof map==="object")Object.values(map).forEach(season=>{
-        const count=Array.isArray(season?.watchedEpisodes)?new Set(season.watchedEpisodes.map(Number).filter(n=>Number.isFinite(n)&&n>0)).size:0;
+        const raw=season?.watchedEpisodes;
+        const count=Array.isArray(raw)?new Set(raw.map(Number).filter(n=>Number.isFinite(n)&&n>0)).size:0;
         if(!count)return;
-        if(runtime>0){showMinutes+=count*runtime;watchedEpisodes+=count;}else unestimatedEpisodes+=count;
+        // Count watched episodes even when TMDB has no runtime; only the
+        // minutes estimate is conditional on a known episode duration.
+        watchedEpisodes+=count;
+        if(runtime>0)showMinutes+=count*runtime;
+        else unestimatedEpisodes+=count;
       });
     });
     const estimatedMinutes=movieMinutes+showMinutes;
@@ -432,7 +455,7 @@ function renderStats(){
         <div class="stats-time-hero"><div><span class="eyebrow">TEMPO ESTIMADO TOTAL</span><strong>${estimatedMinutes?formatWatchTime(estimatedMinutes):"—"}</strong><small>${estimatedMinutes?`${(estimatedMinutes/60).toFixed(1).replace(".",",")} horas de conteúdo`:"Ainda não há durações suficientes para estimar."}</small></div><div class="stats-time-icon">◷</div></div>
         <div class="stats-chart-grid stats-chart-grid-two stats-time-grid">
           <article class="stats-panel"><h3>Onde seu tempo foi investido</h3><div class="stats-donut-layout">${statsDonut([["Filmes",movieMinutes], ["Séries",showMinutes]],estimatedMinutes,"MINUTOS")}${statsLegend([["Filmes",movieMinutes], ["Séries",showMinutes]],estimatedMinutes)}</div></article>
-          <article class="stats-panel"><h3>Detalhamento</h3><div class="stats-time-breakdown"><div><span>🎬 Tempo com filmes</span><strong>${formatWatchTime(movieMinutes)}</strong><small>${movieViews} experiências concluídas com duração conhecida</small></div><div><span>📺 Tempo com séries</span><strong>${formatWatchTime(showMinutes)}</strong><small>${watchedEpisodes} episódios contabilizados</small></div></div></article>
+          <article class="stats-panel"><h3>Detalhamento</h3><div class="stats-time-breakdown"><div><span>🎬 Tempo com filmes</span><strong>${formatWatchTime(movieMinutes)}</strong><small>${movieViews} experiências concluídas com duração conhecida</small></div><div><span>📺 Tempo com séries</span><strong>${formatWatchTime(showMinutes)}</strong><small>${watchedEpisodes} episódios registrados${unestimatedEpisodes?` · ${unestimatedEpisodes} sem duração`:''}</small></div></div></article>
         </div>
         ${(unestimatedMovies||unestimatedEpisodes)?`<p class="stats-footnote">Alguns registros não entraram na estimativa porque o catálogo não forneceu duração: ${unestimatedMovies} experiências de filmes e ${unestimatedEpisodes} episódios. O total considera apenas dados com duração conhecida.</p>`:""}
       </section>

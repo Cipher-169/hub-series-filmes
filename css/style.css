@@ -2536,11 +2536,11 @@ body.discover-mode .top { padding-top:14px; padding-bottom:14px; }
   background:transparent;color:#eee2d0;font:inherit;font-size:.9rem;text-align:left;cursor:pointer;
   transition:background .14s ease,color .14s ease
 }
-.diary-select-option:hover{background:rgba(211,177,125,.12);color:#f4d5a2}
-.diary-select-option.is-selected{background:rgba(211,177,125,.2);color:#f0c98d;font-weight:650}
-.diary-select-option.is-selected:before{content:"✓";display:inline-block;width:19px;color:#d3b17d}
-.diary-select-option.is-selected:hover,.diary-select-option.is-selected:focus{background:rgba(211,177,125,.28);color:#ffe0ad}
-.diary-select-option:not(.is-selected):hover,.diary-select-option:not(.is-selected):focus{background:rgba(211,177,125,.16);color:#f4d5a2}
+.diary-select-option:hover{background:rgba(211,177,125,.24);color:#fff0d4}
+.diary-select-option.is-selected{background:rgba(211,177,125,.22);color:#f5d7a5;font-weight:650}
+.diary-select-option.is-selected:before{content:"✓";display:inline-block;width:19px;color:#e6bf82}
+.diary-select-option.is-selected:hover,.diary-select-option.is-selected:focus{background:rgba(211,177,125,.38);color:#fff3dc}
+.diary-select-option:not(.is-selected):hover,.diary-select-option:not(.is-selected):focus{background:rgba(211,177,125,.26);color:#fff0d4}
 @media(max-width:560px){.diary-select-menu{max-height:190px}}
 
 /* V59 — evita cortar nomes longos dos meses no calendário */
