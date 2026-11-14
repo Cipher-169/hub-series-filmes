@@ -230,6 +230,12 @@ window.hubFB = {
     });
   },
 
+  /* Todos os registros para o painel de estatísticas. */
+  getAllMediaLogs: async () => {
+    const snap = await getDocsFromServer(logsCol());
+    return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  },
+
   /* Logs de episódios / sessões */
   getItemLogs: async (itemId, type) => {
     // Jornadas e Diário precisam refletir imediatamente alterações feitas nesta sessão

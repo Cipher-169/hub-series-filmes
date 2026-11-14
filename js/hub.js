@@ -5,7 +5,7 @@
    CONTROLE DE VERSÃO:
    Sempre que modificar este arquivo incremente HUB_VERSION em +1.
    ===================================================================== */
-const HUB_VERSION = 34;
+const HUB_VERSION = 35;
 window.HUB_VERSION = HUB_VERSION;
 document.getElementById("project-version").textContent = `v${HUB_VERSION}`;
 
@@ -311,35 +311,72 @@ async function openTmdbPreview(id, mediaType){
 }
 
 /* ---- Aba "Estatísticas" ---- */
-function renderStats() {
-  const total   = movies.length + shows.length;
-  const done    = [...movies, ...shows].filter(i => i.status === "completed").length;
-  const rated   = [...movies, ...shows].filter(i => i.score > 0);
-  const avg     = rated.length ? (rated.reduce((s, i) => s + i.score, 0) / rated.length).toFixed(1) : "—";
-
-  $("view").innerHTML = `
-    <div class="stats-grid">
-      <article class="stat-card"><small>Total no catálogo</small><strong>${total}</strong><span>Filmes e séries</span></article>
-      <article class="stat-card"><small>Concluídos</small><strong>${done}</strong><span>Histórias finalizadas</span></article>
-      <article class="stat-card"><small>Assistindo agora</small><strong>${watching.length}</strong><span>Em andamento</span></article>
-      <article class="stat-card" style="border-color:#ff916b45;background:linear-gradient(145deg,#292033,#151827)"><small>Nota média pessoal</small><strong>${avg}<span style="font:400 .85rem var(--sans);display:inline"> /100</span></strong><span>${rated.length} títulos avaliados</span></article>
-    </div>
-    <div class="stats-columns">
-      <div class="stats-panel">
-        <h3>Distribuição por status</h3>
-        ${statBars([
-          ["Concluídos",     [...movies, ...shows].filter(i => i.status === "completed").length],
-          ["Assistindo",     watching.length],
-          ["Quero assistir", [...movies, ...shows].filter(i => i.status === "plantowatch").length],
-          ["Pausados",       [...movies, ...shows].filter(i => i.status === "paused").length],
-          ["Abandonados",    [...movies, ...shows].filter(i => i.status === "dropped").length],
-        ], total)}
-      </div>
-      <div class="stats-panel">
-        <h3>Filmes vs. Séries</h3>
-        ${statBars([["Filmes", movies.length], ["Séries", shows.length]], total)}
-      </div>
-    </div>`;
+function statsDonut(entries, total, centerLabel = "TOTAL") {
+  const positive=entries.filter(x=>x[1]>0), colors=["#d9b477","#8f9db7","#c17b58","#8caa83","#a88dbb","#6eaaa7","#d2a45b"];
+  if(!total||!positive.length)return `<div class="stats-donut-empty">Sem dados</div>`;
+  let cursor=0; const stops=positive.map(([label,value],i)=>{const from=cursor;cursor+=value/total*100;return `${colors[i%colors.length]} ${from.toFixed(2)}% ${cursor.toFixed(2)}%`;});
+  return `<div class="stats-donut" style="background:conic-gradient(${stops.join(",")})"><div class="stats-donut-hole"><strong>${total}</strong><small>${esc(centerLabel)}</small></div></div>`;
+}
+function statsLegend(entries,total){
+  const colors=["#d9b477","#8f9db7","#c17b58","#8caa83","#a88dbb","#6eaaa7","#d2a45b"];
+  return `<div class="stats-legend">${entries.map(([label,value],i)=>`<div><i style="--legend:${colors[i%colors.length]}"></i><span>${esc(label)}</span><b>${value} <small>${total?Math.round(value/total*100):0}%</small></b></div>`).join("")}</div>`;
+}
+function statsBars(entries,suffix=""){
+  const max=Math.max(1,...entries.map(x=>x[1]));
+  if(!entries.some(x=>x[1]>0))return `<p class="meta">Ainda não há dados suficientes.</p>`;
+  return `<div class="stats-bars">${entries.map(([label,value])=>`<div class="stats-bar-row"><span>${esc(label)}</span><div><i style="width:${value/max*100}%"></i></div><b>${value}${suffix}</b></div>`).join("")}</div>`;
+}
+function renderStats(){
+  const root=$("view"),token=(window.__statsRenderToken=(window.__statsRenderToken||0)+1);
+  root.innerHTML=`<div class="stats-loading">Analisando sua biblioteca…</div>`;
+  (async()=>{
+    let logs=[];try{logs=await hubFB.getAllMediaLogs();}catch(err){console.warn("Falha ao carregar registros para estatísticas",err);}
+    if(token!==window.__statsRenderToken||tab!=="stats")return;
+    const catalog=[...movies,...shows],total=catalog.length;
+    const byStatus=[["Concluídos",catalog.filter(i=>i.status==="completed").length],["Assistindo",catalog.filter(i=>i.status==="watching").length],["Quero assistir",catalog.filter(i=>i.status==="plantowatch").length],["Pausados",catalog.filter(i=>i.status==="paused").length],["Abandonados",catalog.filter(i=>i.status==="dropped").length]];
+    const rated=catalog.filter(i=>Number(i.score)>0),average=rated.length?rated.reduce((s,i)=>s+Number(i.score),0)/rated.length:null;
+    const journeys=logs.filter(x=>x.recordType==="journey"),diary=logs.filter(x=>x.recordType!=="journey"),completed=journeys.filter(x=>x.status==="completed");
+    const rewatches=journeys.filter(x=>x.journeyType==="rewatch").length;
+    const years={};completed.forEach(j=>{const m=String(j.endedAt||"").match(/^(\d{4})/);if(m)years[m[1]]=(years[m[1]]||0)+1;});
+    const yearEntries=Object.entries(years).sort((a,b)=>Number(a[0])-Number(b[0])).slice(-8);
+    const ratings=[["95–100",0],["90–94",0],["80–89",0],["70–79",0],["60–69",0],["0–59",0]];
+    rated.forEach(i=>{const s=Number(i.score),n=s>=95?0:s>=90?1:s>=80?2:s>=70?3:s>=60?4:5;ratings[n][1]++;});
+    const genreCounts={},countryCounts={};
+    catalog.forEach(i=>{
+      const gs=Array.isArray(i.genres)?i.genres:(typeof i.genres==="string"?i.genres.split(/[·,]/):[]);
+      gs.forEach(g=>{const n=String(g?.name||g||"").trim();if(n)genreCounts[n]=(genreCounts[n]||0)+1;});
+      const c=i.originCountry||i.origin_country||i.production_countries||i.productionCountries||i.country;
+      if(Array.isArray(c))c.forEach(v=>countryCounts[v]=(countryCounts[v]||0)+1);else if(c)countryCounts[c]=(countryCounts[c]||0)+1;
+    });
+    const topGenres=Object.entries(genreCounts).sort((a,b)=>b[1]-a[1]).slice(0,7),topCountries=Object.entries(countryCounts).sort((a,b)=>b[1]-a[1]).slice(0,6);
+    const seasonStats=journeys.reduce((a,j)=>{
+      let map=j.seasons;if(typeof map==="string"){try{map=JSON.parse(map)}catch{map={}}}
+      if(Array.isArray(map))map=Object.fromEntries(map.map((v,i)=>[String(v?.number??i+1),v]));
+      if(map&&typeof map==="object")Object.values(map).forEach(s=>{const n=Array.isArray(s?.watchedEpisodes)?s.watchedEpisodes.length:0;a.episodes+=n;if(n)a.seasons++;});
+      return a;
+    },{episodes:0,seasons:0});
+    const statusTotal=byStatus.reduce((s,x)=>s+x[1],0),typeEntries=[["Filmes",movies.length],["Séries",shows.length]];
+    const journeyEntries=[["Primeiras experiências",journeys.filter(j=>j.journeyType==="first").length],["Reassistidas",rewatches],["Retomadas",journeys.filter(j=>j.journeyType==="retry").length]];
+    root.innerHTML=`
+      <section class="stats-overview"><div class="stats-heading"><div><span class="eyebrow">SEU HISTÓRICO EM NÚMEROS</span><h2>Visão geral</h2><p>Uma leitura da sua biblioteca e das suas experiências.</p></div><span class="stats-updated">Dados da biblioteca</span></div>
+      <div class="stats-kpis">
+        <article class="stat-card"><small>Títulos na biblioteca</small><strong>${total}</strong><span>${movies.length} filmes · ${shows.length} séries</span></article>
+        <article class="stat-card"><small>Concluídos</small><strong>${byStatus[0][1]}</strong><span>${total?Math.round(byStatus[0][1]/total*100):0}% do catálogo</span></article>
+        <article class="stat-card"><small>Experiências registradas</small><strong>${journeys.length}</strong><span>${rewatches} reassistidas</span></article>
+        <article class="stat-card"><small>Nota média pessoal</small><strong>${average===null?"—":average.toFixed(1)}<em>/100</em></strong><span>${rated.length} títulos avaliados</span></article></div></section>
+      <section class="stats-section"><div class="stats-section-title"><span class="eyebrow">COMPOSIÇÃO</span><h2>Como sua biblioteca se distribui</h2></div><div class="stats-chart-grid">
+        <article class="stats-panel"><h3>Filmes × Séries</h3><div class="stats-donut-layout">${statsDonut(typeEntries,total,"TÍTULOS")}${statsLegend(typeEntries,total)}</div></article>
+        <article class="stats-panel"><h3>Status da biblioteca</h3><div class="stats-donut-layout">${statsDonut(byStatus,statusTotal,"TÍTULOS")}${statsLegend(byStatus,statusTotal)}</div></article>
+        <article class="stats-panel"><h3>Distribuição das suas notas</h3><p class="stats-subtitle">Somente títulos com avaliação pessoal</p>${statsBars(ratings," títulos")}</article></div></section>
+      <section class="stats-section"><div class="stats-section-title"><span class="eyebrow">ATIVIDADE</span><h2>Sua trajetória como espectador</h2></div><div class="stats-chart-grid">
+        <article class="stats-panel"><h3>Experiências</h3><div class="stats-donut-layout">${statsDonut(journeyEntries,journeys.length,"JORNADAS")}${statsLegend(journeyEntries,journeys.length)}</div><div class="stats-mini-kpis"><div><strong>${completed.length}</strong><span>Experiências concluídas</span></div><div><strong>${diary.length}</strong><span>Registros no diário</span></div></div></article>
+        <article class="stats-panel"><h3>Conclusões por ano</h3><p class="stats-subtitle">Data de término de cada experiência concluída</p>${yearEntries.length?statsBars(yearEntries,""): `<p class="meta">Ainda não há datas de conclusão suficientes.</p>`}</article>
+        <article class="stats-panel"><h3>Progresso de séries</h3><div class="stats-big-number">${seasonStats.episodes}</div><p class="stats-subtitle">Episódios marcados como assistidos nas experiências</p><div class="stats-mini-kpis"><div><strong>${seasonStats.seasons}</strong><span>Temporadas com progresso</span></div><div><strong>${shows.length}</strong><span>Séries na biblioteca</span></div></div></article></div></section>
+      <section class="stats-section"><div class="stats-section-title"><span class="eyebrow">SEUS GOSTOS</span><h2>O que aparece mais na sua coleção</h2></div><div class="stats-chart-grid stats-chart-grid-two">
+        <article class="stats-panel"><h3>Gêneros mais frequentes</h3>${topGenres.length?statsBars(topGenres," títulos"):`<p class="meta">Gêneros indisponíveis no catálogo.</p>`}</article>
+        <article class="stats-panel"><h3>Países de origem</h3>${topCountries.length?statsBars(topCountries," títulos"):`<p class="meta">Países de origem indisponíveis.</p>`}</article></div></section>
+      <p class="stats-footnote">Títulos contam cada obra uma única vez. Experiências e episódios são contabilizados separadamente por jornada, permitindo reconhecer reassistidas sem duplicar o total da biblioteca. Datas ausentes não entram no gráfico anual.</p>`;
+  })();
 }
 
 /* =====================================================================
@@ -871,7 +908,10 @@ function calendarMonthMarkup(root, monthDate) {
     const iso=`${year}-${String(month+1).padStart(2,"0")}-${String(day).padStart(2,"0")}`;
     cells.push(`<button type="button" class="hub-calendar-day ${iso===selected?"is-selected":""} ${iso===today?"is-today":""}" data-calendar-day="${iso}">${day}</button>`);
   }
-  return `<div class="hub-calendar-head"><button type="button" data-calendar-prev aria-label="Mês anterior">‹</button><strong>${monthDate.toLocaleDateString("pt-BR",{month:"long",year:"numeric"})}</strong><button type="button" data-calendar-next aria-label="Próximo mês">›</button></div>
+  const monthNames=["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
+  const currentYear=new Date().getFullYear();
+  const yearOptions=Array.from({length:currentYear+10-1900+1},(_,i)=>1900+i).map(y=>`<option value="${y}" ${y===year?"selected":""}>${y}</option>`).join("");
+  return `<div class="hub-calendar-head"><button type="button" data-calendar-prev aria-label="Mês anterior">‹</button><select class="hub-calendar-month" data-calendar-month aria-label="Selecionar mês">${monthNames.map((m,i)=>`<option value="${i}" ${i===month?"selected":""}>${m}</option>`).join("")}</select><select class="hub-calendar-year" data-calendar-year aria-label="Selecionar ano">${yearOptions}</select><button type="button" data-calendar-next aria-label="Próximo mês">›</button></div>
     <div class="hub-calendar-week">${["D","S","T","Q","Q","S","S"].map(x=>`<span>${x}</span>`).join("")}</div>
     <div class="hub-calendar-grid">${cells.join("")}</div>
     <div class="hub-calendar-foot"><button type="button" data-calendar-clear>Limpar</button><button type="button" data-calendar-today>Hoje</button></div>`;
@@ -885,6 +925,18 @@ function setCalendarValue(root,value) {
   root.querySelector('[data-calendar-popover]').hidden=true;
   root.querySelector('[data-calendar-open]').setAttribute("aria-expanded","false");
 }
+document.addEventListener("change",e=>{
+  if(!e.target.matches("[data-calendar-month], [data-calendar-year]")) return;
+  const pop=e.target.closest("[data-calendar-popover]"), root=pop?.closest("[data-calendar]");
+  if(!pop||!root) return;
+  const current=new Date((pop.dataset.month||localDateISO().slice(0,7)+"-01")+"T12:00:00");
+  const month=Number(pop.querySelector("[data-calendar-month]")?.value ?? current.getMonth());
+  const year=Number(pop.querySelector("[data-calendar-year]")?.value ?? current.getFullYear());
+  const next=new Date(year,month,1);
+  pop.dataset.month=`${next.getFullYear()}-${String(next.getMonth()+1).padStart(2,"0")}-01`;
+  pop.innerHTML=calendarMonthMarkup(root,next);
+});
+
 document.addEventListener("click",e=>{
   const open=e.target.closest("[data-calendar-open]");
   if(open){
