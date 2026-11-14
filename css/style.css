@@ -2120,3 +2120,31 @@ body.discover-mode .top { padding-top:14px; padding-bottom:14px; }
 .btn-save-season-data:disabled { opacity:.6; cursor:wait; }
 .season-finished-note { display:block; padding:0 14px 10px; color:var(--muted); }
 @media(max-width:680px) { .season-rating-grid { grid-template-columns:minmax(0,1fr); } .season-save-row { grid-column:1; } }
+
+
+/* V40 — calendário das temporadas sem recorte e ação em lote alinhada */
+.season-block,
+.season-content {
+  overflow: visible;
+}
+.season-block {
+  position: relative;
+  isolation: auto;
+}
+.season-rating-grid,
+.season-save-row,
+.season-bulk-actions {
+  position: relative;
+}
+.hub-calendar-popover {
+  z-index: 1000;
+}
+.season-bulk-actions {
+  padding-top: 4px;
+  padding-bottom: 2px;
+  align-items: center;
+}
+.season-bulk-actions button {
+  align-self: center;
+  margin-top: -2px;
+}

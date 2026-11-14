@@ -8,7 +8,7 @@ import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChang
   from "https://www.gstatic.com/firebasejs/13.2.0/firebase-auth.js";
 import {
   initializeFirestore, persistentLocalCache, persistentMultipleTabManager,
-  collection, doc, getDoc, getDocs, addDoc, setDoc, updateDoc, deleteDoc,
+  collection, doc, getDoc, getDocs, getDocsFromServer, addDoc, setDoc, updateDoc, deleteDoc,
   serverTimestamp, query, where,
 } from "https://www.gstatic.com/firebasejs/13.2.0/firebase-firestore.js";
 
@@ -211,15 +211,31 @@ window.hubFB = {
 
   /* Logs de episódios / sessões */
   getItemLogs: async (itemId, type) => {
+    // Jornadas e Diário precisam refletir imediatamente alterações feitas nesta sessão
+    // ou em outra aba/dispositivo. Não confiar no cache IndexedDB de até 6 horas.
     const key = `logs:${type}:${itemId}`;
-    const cached = await cacheGet(key);
-    if (Array.isArray(cached?.data) && Date.now() - cached.savedAt < CACHE_TTL) return cached.data;
-    if (cached) await cacheDelete(key);
-    return freshOrCached(key, async () => {
-      const q = query(logsCol(), where("itemId", "==", String(itemId)), where("type", "==", type));
+    const q = query(logsCol(), where("itemId", "==", String(itemId)), where("type", "==", type));
+    try {
+      const snap = await getDocsFromServer(q);
+      const fresh = snap.docs.map(d => ({
+        id: d.id, ...d.data(),
+        createdAtMs: d.data().createdAt?.toMillis?.() ?? 0
+      }));
+      await cacheSet(key, fresh);
+      return fresh;
+    } catch (error) {
+      // Se estiver sem conexão, permite consulta ao cache local do Firestore/IndexedDB.
+      console.warn("Não foi possível atualizar os registros no servidor; usando dados locais.", error);
+      const cached = await cacheGet(key);
+      if (Array.isArray(cached?.data)) return cached.data;
       const snap = await getDocs(q);
-      return snap.docs.map(d => ({ id: d.id, ...d.data(), createdAtMs: d.data().createdAt?.toMillis?.() ?? 0 }));
-    });
+      const local = snap.docs.map(d => ({
+        id: d.id, ...d.data(),
+        createdAtMs: d.data().createdAt?.toMillis?.() ?? 0
+      }));
+      await cacheSet(key, local);
+      return local;
+    }
   },
 
   /* Jornadas independentes: armazenadas em mediaLogs para aproveitar as regras atuais. */
