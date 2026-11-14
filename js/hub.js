@@ -5,7 +5,7 @@
    CONTROLE DE VERSÃO:
    Sempre que modificar este arquivo incremente HUB_VERSION em +1.
    ===================================================================== */
-const HUB_VERSION = 24;
+const HUB_VERSION = 25;
 window.HUB_VERSION = HUB_VERSION;
 document.getElementById("project-version").textContent = `v${HUB_VERSION}`;
 
@@ -196,6 +196,9 @@ function discoverCard(item) {
       </button>
       <button type="button" class="poster-action" data-add-tmdb="${esc(item.id)}" data-media-type="${item.mediaType}" data-add-status="plantowatch" title="Adicionar a Quero assistir" aria-label="Adicionar a Quero assistir" ${disabled?"disabled":""}>
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 4.8h12a1 1 0 0 1 1 1v14l-7-4-7 4v-14a1 1 0 0 1 1-1Z"/></svg>
+      </button>
+      <button type="button" class="poster-action" data-add-tmdb="${esc(item.id)}" data-media-type="${item.mediaType}" data-add-status="completed" title="Marcar como concluído" aria-label="Marcar como concluído" ${disabled?"disabled":""}>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5a8.5 8.5 0 1 0 0 17 8.5 8.5 0 0 0 0-17Z"/><path d="m8.2 12.2 2.5 2.5 5.2-5.4"/></svg>
       </button>
       <button type="button" class="poster-action poster-action-manual" data-manual-add="${esc(item.id)}" data-media-type="${item.mediaType}" title="Adicionar manualmente" aria-label="Adicionar manualmente" ${disabled?"disabled":""}>
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
