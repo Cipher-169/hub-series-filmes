@@ -481,8 +481,17 @@ async function openItem(id, type, previewData = null) {
   });
   $("btn-add-preview")?.addEventListener("click", async () => {
     if (!fbUser) return;
-    try { await hubFB.addCatalogItem({ ...previewData, status:$("detail-add-status")?.value || "plantowatch" }); await loadCatalog(); d.close(); }
-    catch(err) { alert(`Não foi possível adicionar: ${err.code || err.message}`); }
+    const button = $("btn-add-preview");
+    if (button) { button.disabled = true; button.textContent = "Adicionando…"; }
+    try {
+      await hubFB.addCatalogItem({ ...previewData, status:$("detail-add-status")?.value || "plantowatch" });
+      await loadCatalog();
+      d.close();
+      await openItem(id, type);
+    } catch(err) {
+      if (button) { button.disabled = false; button.textContent = "Adicionar à minha biblioteca"; }
+      alert(`Não foi possível adicionar: ${err.code || err.message}`);
+    }
   });
 
   // Dropdown customizado de status; o select oculto preserva o valor e a integração existentes.
@@ -1154,7 +1163,7 @@ document.addEventListener("click",async e=>{
   if(quick){const action=quick.dataset.quick;if(action==="discover"){if(!fbUser)return;document.querySelector('[data-tab="descobrir"]')?.click();}else if(action==="search"){if(!fbUser)return;document.querySelector('[data-tab="descobrir"]')?.click();setTimeout(()=>$ ("tmdb-search-input")?.focus(),50);}else if(action==="watchlist"){tab="filmes";render();document.querySelector('[data-tab="filmes"]')?.click();$("filter-status").value="plantowatch";render();}else if(action==="random"){const pool=[...movies,...shows].filter(x=>x.status==="plantowatch");if(pool.length){const pick=pool[Math.floor(Math.random()*pool.length)];openItem(pick.id,pick.type);}else alert("Adicione títulos à sua lista para usar esta função.");}return;}
   const cat=e.target.closest("[data-discover-category]");if(cat){discoverView=cat.dataset.discoverCategory;discoverPage=1;renderDiscover();return;}
   if(e.target.closest("[data-discover-home]")){discoverView="home";renderDiscover();return;}
-  const page=e.target.closest("[data-discover-page]");if(page){discoverPage=Math.max(1,discoverPage+(page.dataset.discoverPage==="next"?1:-1));renderDiscover();return;}
+  const page=e.target.closest("[data-discover-page]");if(page){discoverPage=Math.max(1,discoverPage+(page.dataset.discoverPage==="next"?1:-1));renderDiscover();window.scrollTo({top:0,behavior:"smooth"});return;}
   const searchPageButton=e.target.closest("[data-search-page]");if(searchPageButton){runDiscoverSearch(Math.max(1,searchPage+(searchPageButton.dataset.searchPage==="next"?1:-1)));return;}
   if(e.target.closest("[data-discover-retry]")){discoverCache.delete(`${discoverView}:${discoverPage}`);renderDiscover();return;}
   const preview=e.target.closest("[data-preview-id]");if(preview&&!e.target.closest("[data-add-tmdb],[data-manual-add],[data-edit-catalog]")){openTmdbPreview(preview.dataset.previewId,preview.dataset.previewType);return;}
