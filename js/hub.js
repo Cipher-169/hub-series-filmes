@@ -326,6 +326,18 @@ function statsBars(entries,suffix=""){
   if(!entries.some(x=>x[1]>0))return `<p class="meta">Ainda não há dados suficientes.</p>`;
   return `<div class="stats-bars">${entries.map(([label,value])=>`<div class="stats-bar-row"><span>${esc(label)}</span><div><i style="width:${value/max*100}%"></i></div><b>${value}${suffix}</b></div>`).join("")}</div>`;
 }
+function formatWatchTime(minutes){
+  const value=Math.max(0,Math.round(Number(minutes)||0));
+  const days=Math.floor(value/1440),hours=Math.floor((value%1440)/60),mins=value%60;
+  if(days)return `${days}d ${hours}h`;
+  if(hours)return `${hours}h ${mins}min`;
+  return `${mins}min`;
+}
+function getAverageEpisodeRuntime(item){
+  const raw=item.episodeRunTime??item.episode_run_time??item.runtime??item.episodeRuntime;
+  if(Array.isArray(raw)){const values=raw.map(Number).filter(n=>Number.isFinite(n)&&n>0);return values.length?values.reduce((a,b)=>a+b,0)/values.length:0;}
+  const n=Number(raw);return Number.isFinite(n)&&n>0?n:0;
+}
 function renderStats(){
   const root=$("view"),token=(window.__statsRenderToken=(window.__statsRenderToken||0)+1);
   root.innerHTML=`<div class="stats-loading">Analisando sua biblioteca…</div>`;
@@ -355,6 +367,26 @@ function renderStats(){
       if(map&&typeof map==="object")Object.values(map).forEach(s=>{const n=Array.isArray(s?.watchedEpisodes)?s.watchedEpisodes.length:0;a.episodes+=n;if(n)a.seasons++;});
       return a;
     },{episodes:0,seasons:0});
+    // Estimativa de tempo: filmes usam jornadas concluídas; séries usam episódios
+    // marcados como assistidos em cada jornada. Só calcula quando há duração conhecida.
+    const catalogByKey=new Map(catalog.map(i=>[`${i.type}:${i.id}`,i]));
+    let movieMinutes=0,showMinutes=0,movieViews=0,watchedEpisodes=0,unestimatedMovies=0,unestimatedEpisodes=0;
+    completed.forEach(j=>{
+      if(j.type!=="movie")return;
+      const item=catalogByKey.get(`movie:${j.itemId}`),runtime=Number(item?.runtime||item?.duration||item?.runtimeMinutes||0);
+      if(runtime>0){movieMinutes+=runtime;movieViews++;}else unestimatedMovies++;
+    });
+    journeys.filter(j=>j.type==="show").forEach(j=>{
+      let map=j.seasons;if(typeof map==="string"){try{map=JSON.parse(map)}catch{map={}}}
+      if(Array.isArray(map))map=Object.fromEntries(map.map((v,i)=>[String(v?.number??i+1),v]));
+      const item=catalogByKey.get(`show:${j.itemId}`),runtime=getAverageEpisodeRuntime(item);
+      if(map&&typeof map==="object")Object.values(map).forEach(season=>{
+        const count=Array.isArray(season?.watchedEpisodes)?season.watchedEpisodes.length:0;
+        if(!count)return;
+        if(runtime>0){showMinutes+=count*runtime;watchedEpisodes+=count;}else unestimatedEpisodes+=count;
+      });
+    });
+    const estimatedMinutes=movieMinutes+showMinutes;
     const statusTotal=byStatus.reduce((s,x)=>s+x[1],0),typeEntries=[["Filmes",movies.length],["Séries",shows.length]];
     const journeyEntries=[["Primeiras experiências",journeys.filter(j=>j.journeyType==="first").length],["Reassistidas",rewatches],["Retomadas",journeys.filter(j=>j.journeyType==="retry").length]];
     root.innerHTML=`
@@ -372,6 +404,14 @@ function renderStats(){
         <article class="stats-panel"><h3>Experiências</h3><div class="stats-donut-layout">${statsDonut(journeyEntries,journeys.length,"JORNADAS")}${statsLegend(journeyEntries,journeys.length)}</div><div class="stats-mini-kpis"><div><strong>${completed.length}</strong><span>Experiências concluídas</span></div><div><strong>${diary.length}</strong><span>Registros no diário</span></div></div></article>
         <article class="stats-panel"><h3>Conclusões por ano</h3><p class="stats-subtitle">Data de término de cada experiência concluída</p>${yearEntries.length?statsBars(yearEntries,""): `<p class="meta">Ainda não há datas de conclusão suficientes.</p>`}</article>
         <article class="stats-panel"><h3>Progresso de séries</h3><div class="stats-big-number">${seasonStats.episodes}</div><p class="stats-subtitle">Episódios marcados como assistidos nas experiências</p><div class="stats-mini-kpis"><div><strong>${seasonStats.seasons}</strong><span>Temporadas com progresso</span></div><div><strong>${shows.length}</strong><span>Séries na biblioteca</span></div></div></article></div></section>
+      <section class="stats-section"><div class="stats-section-title"><span class="eyebrow">TEMPO DE TELA</span><h2>Quanto tempo você passou assistindo</h2><p class="stats-subtitle">Uma estimativa baseada nas durações disponíveis e no seu histórico de experiências.</p></div>
+        <div class="stats-time-hero"><div><span class="eyebrow">TEMPO ESTIMADO TOTAL</span><strong>${estimatedMinutes?formatWatchTime(estimatedMinutes):"—"}</strong><small>${estimatedMinutes?`${(estimatedMinutes/60).toFixed(1).replace(".",",")} horas de conteúdo`:"Ainda não há durações suficientes para estimar."}</small></div><div class="stats-time-icon">◷</div></div>
+        <div class="stats-chart-grid stats-chart-grid-two stats-time-grid">
+          <article class="stats-panel"><h3>Onde seu tempo foi investido</h3><div class="stats-donut-layout">${statsDonut([["Filmes",movieMinutes], ["Séries",showMinutes]],estimatedMinutes,"MINUTOS")}${statsLegend([["Filmes",movieMinutes], ["Séries",showMinutes]],estimatedMinutes)}</div></article>
+          <article class="stats-panel"><h3>Detalhamento</h3><div class="stats-time-breakdown"><div><span>🎬 Tempo com filmes</span><strong>${formatWatchTime(movieMinutes)}</strong><small>${movieViews} experiências concluídas com duração conhecida</small></div><div><span>📺 Tempo com séries</span><strong>${formatWatchTime(showMinutes)}</strong><small>${watchedEpisodes} episódios contabilizados</small></div></div></article>
+        </div>
+        ${(unestimatedMovies||unestimatedEpisodes)?`<p class="stats-footnote">Alguns registros não entraram na estimativa porque o catálogo não forneceu duração: ${unestimatedMovies} experiências de filmes e ${unestimatedEpisodes} episódios. O total considera apenas dados com duração conhecida.</p>`:""}
+      </section>
       <section class="stats-section"><div class="stats-section-title"><span class="eyebrow">SEUS GOSTOS</span><h2>O que aparece mais na sua coleção</h2></div><div class="stats-chart-grid stats-chart-grid-two">
         <article class="stats-panel"><h3>Gêneros mais frequentes</h3>${topGenres.length?statsBars(topGenres," títulos"):`<p class="meta">Gêneros indisponíveis no catálogo.</p>`}</article>
         <article class="stats-panel"><h3>Países de origem</h3>${topCountries.length?statsBars(topCountries," títulos"):`<p class="meta">Países de origem indisponíveis.</p>`}</article></div></section>
@@ -506,7 +546,13 @@ async function openItem(id, type, previewData = null) {
       <section id="detail-info">
         <div class="score-box score-box-primary">
           <label for="input-item-score"><strong>${isShow ? "Nota Geral da Série" : "Sua Avaliação"} (0 a 100):</strong></label>
-          <input type="number" id="input-item-score" min="0" max="100" value="${currentScore > 0 ? currentScore : ""}" placeholder="0–100" ${(!inCatalog || !fbUser) ? "disabled" : ""}>
+          <div class="custom-number score-number">
+            <input type="number" id="input-item-score" min="0" max="100" step="1" value="${currentScore > 0 ? currentScore : ""}" placeholder="0–100" ${(!inCatalog || !fbUser) ? "disabled" : ""}>
+            <span class="number-stepper" aria-label="Ajustar nota geral">
+              <button type="button" data-score-step="-1" aria-label="Diminuir nota geral" ${(!inCatalog || !fbUser) ? "disabled" : ""}>−</button>
+              <button type="button" data-score-step="1" aria-label="Aumentar nota geral" ${(!inCatalog || !fbUser) ? "disabled" : ""}>+</button>
+            </span>
+          </div>
           <button type="button" id="btn-save-score" ${(!inCatalog || !fbUser) ? "disabled" : ""}>Salvar Nota</button>
           <span class="meta" id="score-status"></span>
         </div>
@@ -640,6 +686,19 @@ async function openItem(id, type, previewData = null) {
     }
     watching = [...movies, ...shows].filter(i => i.status === "watching");
     render();
+  });
+
+  // Ajustes rápidos da nota geral: alteram 1 ponto por clique, sem salvar automaticamente.
+  document.querySelectorAll("[data-score-step]").forEach(button => {
+    button.addEventListener("click", () => {
+      const input = $("input-item-score");
+      if (!input || input.disabled) return;
+      const current = input.value.trim() === "" ? 0 : Number(input.value);
+      const next = Math.min(100, Math.max(0, (Number.isFinite(current) ? current : 0) + Number(button.dataset.scoreStep)));
+      input.value = String(next);
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+    });
   });
 
   // Evento: Salvar Nota Geral
@@ -1034,13 +1093,44 @@ function renderDiaryEntries(id, type, logs) {
       </article>`).join(""):`<div class="msg">Você ainda não iniciou nenhuma experiência com esta obra.</div>`}</div>
     </section>` : `<section class="journey-panel"><h3>Minhas experiências</h3><div class="journey-list">${journeys.map(j=>`<article class="journey-card"><strong>${label(j)}</strong><small>${statusText[j.status]||j.status||""}</small></article>`).join("")}</div></section>`;
   const form = editable ? `<p class="diary-intro">Registre suas impressões ${isShow?"episódio por episódio":"sobre o filme"}.</p><form class="diary-form" id="diary-form">
-    <div class="wide-field"><label for="diary-journey">Experiência</label><select id="diary-journey" required>${journeys.map(j=>`<option value="${esc(j.id)}">${label(j)} — ${statusText[j.status]||"Não definido"}</option>`).join("")}</select>${journeys.length?"":`<small>Inicie uma experiência em “Minhas experiências” para adicionar registros vinculados.</small>`}</div>
+    <div class="wide-field diary-journey-field"><label id="diary-journey-label">Experiência</label><select id="diary-journey" class="diary-journey-native" required tabindex="-1" aria-hidden="true">${journeys.map(j=>`<option value="${esc(j.id)}">${label(j)} — ${statusText[j.status]||"Não definido"}</option>`).join("")}</select><div class="diary-select"><button type="button" class="diary-select-trigger" aria-haspopup="listbox" aria-expanded="false" aria-labelledby="diary-journey-label diary-journey-value" ${journeys.length?"":"disabled"}><span id="diary-journey-value">${journeys.length?`${label(journeys[0])} — ${statusText[journeys[0].status]||"Não definido"}`:"Nenhuma experiência disponível"}</span><span class="diary-select-chevron" aria-hidden="true">⌄</span></button><div class="diary-select-menu" role="listbox" aria-labelledby="diary-journey-label" hidden>${journeys.map((j,i)=>`<button type="button" class="diary-select-option ${i===0?"is-selected":""}" role="option" aria-selected="${i===0}" data-journey-option="${esc(j.id)}">${label(j)} — ${statusText[j.status]||"Não definido"}</button>`).join("")}</div></div>${journeys.length?"":`<small>Inicie uma experiência em “Minhas experiências” para adicionar registros vinculados.</small>`}</div>
     ${isShow?`<div><label for="diary-episode">Episódio</label><input id="diary-episode" type="number" min="0" step="1" value="1" required></div>`:""}
     <div class="diary-date-field"><label for="diary-date">Data</label>${calendarPickerMarkup({id:"diary-date",value:localDateISO()})}<label class="diary-forgot-label"><input id="diary-forgot" type="checkbox"> <span>Esqueci a data</span></label></div>
     <div class="wide-field"><label for="diary-comment">Seu comentário</label><textarea id="diary-comment" maxlength="10000" placeholder="O que achou?" required></textarea></div><button type="submit" ${journeys.length?"":"disabled"}>Adicionar registro</button><span class="diary-status" id="diary-status" role="status"></span></form>` : `<p class="diary-intro">Diário público de impressões.</p>`;
   $("experiences-content").innerHTML = journeyPanel;
   $("diary-content").innerHTML = form + `<h3 style="font:600 1.2rem var(--serif);margin:0 0 12px">Registros <span class="meta">${diaryLogs.length} registro(s)</span></h3><div class="diary-list">${diaryLogs.length?diaryLogs.map(log=>`<article class="diary-entry" data-log-entry="${esc(log.id)}"><div class="diary-entry-head"><strong>${isShow?`Episódio ${Number(log.episode)||"?"}`:"Sessão"}</strong><span class="meta">${diaryDate(log.watchedAt)}</span></div><p>${esc(log.comment)}</p><small>${journeys.some(j=>j.id===log.journeyId)?label(journeys.find(j=>j.id===log.journeyId)):"Registro antigo — sem experiência vinculada"}</small>${editable?`<div class="diary-actions"><button type="button" data-edit-log="${esc(log.id)}">Editar</button><button type="button" data-delete-log="${esc(log.id)}">Excluir</button></div>`:""}</article>`).join(""):`<div class="msg">Ainda não há registros para este título.</div>`}</div>`;
   if (!editable) return;
+
+  // Seletor de experiência com identidade visual do Hub (sem realce azul nativo).
+  const diarySelect = $("diary-content")?.querySelector(".diary-select");
+  if (diarySelect) {
+    const trigger = diarySelect.querySelector(".diary-select-trigger");
+    const menu = diarySelect.querySelector(".diary-select-menu");
+    const nativeSelect = $("diary-journey");
+    trigger?.addEventListener("click", () => {
+      const opening = menu.hidden;
+      menu.hidden = !opening;
+      trigger.setAttribute("aria-expanded", String(opening));
+    });
+    menu?.querySelectorAll("[data-journey-option]").forEach(option => option.addEventListener("click", () => {
+      nativeSelect.value = option.dataset.journeyOption;
+      $("diary-journey-value").textContent = option.textContent;
+      menu.querySelectorAll(".diary-select-option").forEach(item => {
+        const selected = item === option;
+        item.classList.toggle("is-selected", selected);
+        item.setAttribute("aria-selected", String(selected));
+      });
+      menu.hidden = true;
+      trigger.setAttribute("aria-expanded", "false");
+      nativeSelect.dispatchEvent(new Event("change", {bubbles:true}));
+    }));
+    document.addEventListener("click", event => {
+      if (!diarySelect.contains(event.target)) {
+        menu.hidden = true;
+        trigger?.setAttribute("aria-expanded", "false");
+      }
+    }, {once:false});
+  }
 
   $("btn-new-journey")?.addEventListener("click", async ev=>{const b=ev.currentTarget;b.disabled=true;b.textContent="Criando…";try{await hubFB.createJourney({itemId:id,type});await loadCatalog();await loadDiary(id,type);}catch(err){alert(`Não foi possível iniciar a experiência: ${err.message||err.code}`);b.disabled=false;b.textContent="+ Iniciar nova experiência";}});
 

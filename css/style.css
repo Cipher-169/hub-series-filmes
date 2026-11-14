@@ -2446,3 +2446,131 @@ body.discover-mode .top { padding-top:14px; padding-bottom:14px; }
 .stats-loading{padding:45px 15px;text-align:center;color:var(--muted)}
 @media(max-width:900px){.stats-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.stats-chart-grid{grid-template-columns:1fr}.stats-chart-grid .stats-panel:nth-child(3){grid-column:auto}}
 @media(max-width:560px){.stats-heading{align-items:flex-start;flex-direction:column}.stats-kpis{gap:9px}.stats-kpis .stat-card{padding:13px;min-height:100px}.stats-donut-layout{gap:13px}.stats-donut,.stats-donut-empty{width:118px;height:118px;flex-basis:118px}.stats-donut-hole{width:76px;height:76px}.stats-bar-row{grid-template-columns:minmax(85px,1fr) minmax(55px,1.5fr) auto;gap:7px;font-size:.76rem}.stats-panel{padding:15px}}
+
+
+/* V57 — controles compactos de ajuste da nota geral */
+.score-box-primary .score-number {
+  position:relative;
+  display:flex;
+  align-items:stretch;
+  width:116px;
+  min-width:116px;
+}
+.score-box-primary .score-number input#input-item-score {
+  box-sizing:border-box;
+  width:100%;
+  min-width:0;
+  height:40px;
+  padding:8px 64px 8px 9px;
+  text-align:center;
+  appearance:textfield;
+  -moz-appearance:textfield;
+  border:1px solid rgba(208,173,120,.5);
+  border-radius:7px;
+  background:#211f1b;
+  color:var(--text);
+  font-weight:600;
+  font-variant-numeric:tabular-nums;
+}
+.score-box-primary .score-number input#input-item-score::-webkit-inner-spin-button,
+.score-box-primary .score-number input#input-item-score::-webkit-outer-spin-button {
+  -webkit-appearance:none;
+  margin:0;
+}
+.score-box-primary .score-number .number-stepper {
+  right:4px;
+  top:4px;
+  bottom:4px;
+  gap:3px;
+}
+.score-box-primary .score-number .number-stepper button {
+  width:25px;
+  min-width:25px;
+  padding:0;
+  border:1px solid rgba(220,198,160,.16);
+  border-radius:6px;
+  color:#e8d2ad;
+  background:rgba(220,198,160,.07);
+  font-size:15px;
+  line-height:1;
+}
+.score-box-primary .score-number .number-stepper button:hover {
+  background:rgba(220,198,160,.18);
+  border-color:rgba(220,198,160,.42);
+}
+.score-box-primary .score-number .number-stepper button:active { transform:scale(.94); }
+.score-box-primary .score-number .number-stepper button:disabled { opacity:.45; cursor:not-allowed; }
+
+
+/* V58 — seletor personalizado de experiência no Diário */
+.diary-journey-field{position:relative}
+.diary-journey-native{
+  position:absolute!important;width:1px!important;height:1px!important;padding:0!important;
+  margin:-1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;
+  white-space:nowrap!important;border:0!important;opacity:0!important;pointer-events:none!important
+}
+.diary-select{position:relative;width:100%;z-index:4}
+.diary-select-trigger{
+  box-sizing:border-box;width:100%;min-height:41px;display:flex;align-items:center;
+  justify-content:space-between;gap:12px;padding:10px 12px;
+  border:1px solid rgba(220,198,160,.22);border-radius:9px;
+  background:#171613;color:var(--text);font:inherit;text-align:left;cursor:pointer;
+  transition:border-color .16s ease,background .16s ease,box-shadow .16s ease
+}
+.diary-select-trigger:hover,.diary-select-trigger[aria-expanded="true"]{
+  border-color:#a98a5c;background:#211f1b
+}
+.diary-select-trigger:focus-visible,.diary-select-option:focus-visible{
+  outline:2px solid #d3b17d;outline-offset:2px
+}
+.diary-select-chevron{color:#d3b17d;font-size:1.05rem;transition:transform .16s ease}
+.diary-select-trigger[aria-expanded="true"] .diary-select-chevron{transform:rotate(180deg)}
+.diary-select-menu{
+  position:absolute;top:calc(100% + 5px);left:0;right:0;max-height:220px;overflow-y:auto;
+  padding:5px;border:1px solid rgba(211,177,125,.38);border-radius:10px;
+  background:#211f1b;box-shadow:0 12px 28px rgba(0,0,0,.42);z-index:30
+}
+.diary-select-menu[hidden]{display:none}
+.diary-select-option{
+  display:block;width:100%;padding:10px 11px;border:0;border-radius:7px;
+  background:transparent;color:#eee2d0;font:inherit;font-size:.9rem;text-align:left;cursor:pointer;
+  transition:background .14s ease,color .14s ease
+}
+.diary-select-option:hover{background:rgba(211,177,125,.12);color:#f4d5a2}
+.diary-select-option.is-selected{background:rgba(211,177,125,.2);color:#f0c98d;font-weight:650}
+.diary-select-option.is-selected:before{content:"✓";display:inline-block;width:19px;color:#d3b17d}
+@media(max-width:560px){.diary-select-menu{max-height:190px}}
+
+/* V59 — evita cortar nomes longos dos meses no calendário */
+.hub-calendar-head {
+  grid-template-columns:30px minmax(0,1.45fr) minmax(76px,.9fr) 30px;
+  gap:5px;
+}
+.hub-calendar-head .hub-calendar-month {
+  padding:0 18px 0 7px;
+  font-size:.7rem;
+  letter-spacing:-.01em;
+}
+.hub-calendar-head .hub-calendar-year {
+  padding:0 5px;
+  font-size:.72rem;
+}
+@media(max-width:360px) {
+  .hub-calendar-head { grid-template-columns:28px minmax(0,1.4fr) minmax(70px,.9fr) 28px; gap:4px; }
+  .hub-calendar-head .hub-calendar-month { padding-left:5px; padding-right:15px; font-size:.67rem; }
+}
+
+/* V60 — seção de tempo de tela nas estatísticas */
+.stats-time-hero{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:23px 25px;margin-bottom:16px;border:1px solid rgba(217,180,119,.32);border-radius:13px;background:linear-gradient(115deg,rgba(185,148,93,.14),rgba(33,31,27,.92) 62%)}
+.stats-time-hero>div:first-child{display:grid;gap:5px}
+.stats-time-hero strong{font:600 clamp(2rem,5vw,3.1rem) var(--serif);color:var(--cream);line-height:1.15}
+.stats-time-hero small{color:var(--muted);font-size:.82rem}
+.stats-time-icon{width:58px;height:58px;flex:0 0 58px;border:1px solid rgba(217,180,119,.3);border-radius:50%;display:grid;place-items:center;color:var(--sun);font-size:2rem;background:rgba(217,180,119,.08)}
+.stats-time-grid .stats-panel{min-width:0}
+.stats-time-breakdown{display:grid;gap:16px}
+.stats-time-breakdown>div{display:grid;gap:4px;padding-bottom:13px;border-bottom:1px solid var(--line)}
+.stats-time-breakdown>div:last-child{padding-bottom:0;border-bottom:0}
+.stats-time-breakdown span{font-size:.84rem;color:var(--text)}
+.stats-time-breakdown strong{font:600 1.45rem var(--serif);color:var(--sun)}
+.stats-time-breakdown small{font-size:.74rem;color:var(--muted)}
+@media(max-width:560px){.stats-time-hero{padding:18px}.stats-time-icon{width:46px;height:46px;flex-basis:46px;font-size:1.6rem}}
