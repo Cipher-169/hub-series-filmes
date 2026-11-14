@@ -264,14 +264,18 @@ async function openTmdbPreview(id, mediaType){
   const existing=(type==="movie"?movies:shows).find(x=>String(x.id)===String(id));
   if(existing) return openItem(id,type);
   try {
-    const r = await fetch(`${TMDB_WORKER_URL}/api/tmdb/${mediaType}/${id}`, { signal: AbortSignal.timeout(15000) });
-    if (!r.ok) throw new Error("Não foi possível carregar os detalhes. Tente novamente.");
+    const r = await fetch(`${TMDB_WORKER_URL}/api/tmdb/${mediaType}/${id}`, {
+      signal: AbortSignal.timeout(12000)
+    });
+    if(!r.ok) throw new Error("Não foi possível carregar os detalhes do catálogo.");
     const d = await r.json();
-    await openItem(id, type, d);
-  } catch (e) {
+    await openItem(id,type,d);
+  } catch(e) {
     const dialog = $("dlg");
     if (dialog?.open) dialog.close();
-    alert(e.name === "TimeoutError" || e.name === "AbortError" ? "A consulta ao catálogo demorou demais. Verifique sua conexão e tente novamente." : e.message);
+    alert(e.name === "TimeoutError" || e.name === "AbortError"
+      ? "O catálogo demorou para responder. Verifique sua conexão e tente novamente."
+      : e.message);
   }
 }
 
@@ -364,36 +368,38 @@ async function openItem(id, type, previewData = null) {
   const inCatalog = (type === "movie" ? movies : shows).some(i => String(i.id) === String(id));
   activeItem = item;
   const isShow = type === "show";
-  // Atualiza metadados antigos com a ficha técnica mais completa do TMDB.
-  // openTmdbPreview já buscou a ficha completa antes de chamar openItem.
-  // Evita repetir a mesma requisição e deixar a janela presa no carregamento.
+  // A ficha de pré-visualização já veio completa do TMDB: não faça uma
+  // segunda consulta. Para itens antigos da biblioteca, atualize em segundo
+  // plano e com timeout para a ficha nunca ficar presa no carregamento.
   if (!previewData && (!item.cast?.length || !item.genres?.length)) {
     try {
       const mediaType = isShow ? "tv" : "movie";
       const response = await fetch(`${TMDB_WORKER_URL}/api/tmdb/${mediaType}/${encodeURIComponent(id)}`, {
-        signal: AbortSignal.timeout(12000)
+        signal: AbortSignal.timeout(10000)
       });
       if (response.ok) {
         const fresh = await response.json();
         Object.assign(item, fresh, { cover:fresh.posterUrl || item.cover, banner:fresh.backdropUrl || item.banner });
         if (inCatalog && window.hubFB && fbUser) {
-          // A atualização auxiliar não deve impedir a abertura da ficha.
-          hubFB.saveItemNote(id, type, fresh).catch(error => console.warn("Não foi possível salvar os metadados atualizados", error));
+          hubFB.saveItemNote(id, type, fresh).catch(error => console.warn("Falha ao atualizar metadados no Firebase", error));
         }
       }
-    } catch (error) { console.warn("Não foi possível atualizar a ficha do TMDB", error); }
+    } catch (error) {
+      console.warn("Não foi possível atualizar a ficha do TMDB; abrindo com os dados disponíveis.", error);
+    }
   }
 
   if (requestToken !== modalRequestToken) return;
   let note = {};
   if (window.hubFB) {
     try {
-      // Firestore pode demorar ou ficar sem resposta; a ficha deve continuar abrindo.
       note = await Promise.race([
         hubFB.getItemNote(id, type),
-        new Promise(resolve => setTimeout(() => resolve({}), 7000))
+        new Promise(resolve => setTimeout(() => resolve({}), 5000))
       ]) || {};
-    } catch (e) { console.warn("Não foi possível carregar as anotações pessoais", e); }
+    } catch (error) {
+      console.warn("Não foi possível carregar as anotações pessoais; abrindo sem elas.", error);
+    }
   }
   if (requestToken !== modalRequestToken) return;
   const currentStatus = note.status || item.status || "plantowatch";
@@ -503,17 +509,8 @@ async function openItem(id, type, previewData = null) {
   });
   $("btn-add-preview")?.addEventListener("click", async () => {
     if (!fbUser) return;
-    const button = $("btn-add-preview");
-    if (button) { button.disabled = true; button.textContent = "Adicionando…"; }
-    try {
-      await hubFB.addCatalogItem({ ...previewData, status:$("detail-add-status")?.value || "plantowatch" });
-      await loadCatalog();
-      d.close();
-      await openItem(id, type);
-    } catch(err) {
-      if (button) { button.disabled = false; button.textContent = "Adicionar à minha biblioteca"; }
-      alert(`Não foi possível adicionar: ${err.code || err.message}`);
-    }
+    try { await hubFB.addCatalogItem({ ...previewData, status:$("detail-add-status")?.value || "plantowatch" }); await loadCatalog(); d.close(); }
+    catch(err) { alert(`Não foi possível adicionar: ${err.code || err.message}`); }
   });
 
   // Dropdown customizado de status; o select oculto preserva o valor e a integração existentes.
@@ -628,45 +625,21 @@ async function loadSeriesSeasons(showId, savedNote, selectedJourneyId = "") {
 
     const regularSeasons = seasonsData.filter(s => s.number > 0);
     const seasonsList = regularSeasons.length ? regularSeasons : seasonsData;
-    // O progresso das experiências é público para leitura; autenticação é exigida
-    // somente para editar. Visitantes também precisam carregar as jornadas para
-    // enxergar os episódios já marcados pelo proprietário.
-    const journeys = hubFB?.getItemJourneys ? await hubFB.getItemJourneys(showId, "show") : [];
+    const journeys = fbUser && hubFB?.getItemJourneys ? await hubFB.getItemJourneys(showId, "show") : [];
     if (requestToken !== seriesSeasonsRequestToken ||
         !activeItem || String(activeItem.id) !== String(showId) || activeItem.type !== "show" ||
         !$("dlg")?.open) return;
     const selectedJourney = journeys.find(j => String(j.id) === String(selectedJourneyId)) || journeys.find(j => j.status === "in_progress") || journeys[0] || null;
-    // Compatibilidade com dados legados: versões anteriores podem ter gravado
-    // temporadas como array ou JSON textual. A interface e o Firestore usam um
-    // mapa por número de temporada; normalizamos antes de qualquer alteração.
-    const normalizeSeasonMap = value => {
-      if (value && typeof value === "object" && !Array.isArray(value)) return value;
-      if (Array.isArray(value)) {
-        return Object.fromEntries(value.map((season, index) => [
-          String(season?.number ?? index + 1),
-          season && typeof season === "object" ? season : {}
-        ]));
-      }
-      if (typeof value === "string" && value.trim()) {
-        try {
-          const parsed = JSON.parse(value);
-          if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) return parsed;
-          if (Array.isArray(parsed)) return normalizeSeasonMap(parsed);
-        } catch { /* dado legado não estruturado: começa vazio sem bloquear o progresso */ }
-      }
-      return {};
-    };
     // Compatibilidade: registros antigos salvos na obra continuam visíveis caso não haja jornada.
-    const savedSeasons = normalizeSeasonMap(selectedJourney?.seasons ?? (journeys.length ? {} : savedNote?.seasons));
+    const savedSeasons = selectedJourney?.seasons || (journeys.length ? {} : (savedNote?.seasons || {}));
     const saveSeasonData = async () => {
-      if (!isOwner()) throw new Error("Somente o proprietário pode editar temporadas e episódios.");
       if (selectedJourney) await hubFB.updateJourney(selectedJourney.id, { seasons: savedSeasons });
-      else await hubFB.saveItemNote(showId, "show", { seasons: savedSeasons });
+      else if (fbUser) await hubFB.saveItemNote(showId, "show", { seasons: savedSeasons });
     };
 
     container.innerHTML = `
       <h3 style="font:600 1.25rem var(--serif);margin:20px 0 10px">Temporadas &amp; Episódios</h3>
-      ${journeys.length ? `<div class="season-journey-picker"><label for="season-journey-select">Progresso desta experiência</label><select id="season-journey-select">${journeys.map((j,i)=>`<option value="${esc(j.id)}" ${selectedJourney?.id===j.id?"selected":""}>Experiência ${String(journeys.length-i).padStart(2,"0")} — ${{in_progress:"Em andamento",paused:"Pausada",completed:"Concluída",abandoned:"Abandonada"}[j.status]||"Não definido"}</option>`).join("")}</select></div>` : `<p class="meta">${isOwner() ? "Inicie uma experiência para acompanhar temporadas separadamente." : "Ainda não há experiências registradas para esta obra."}</p>`}
+      ${journeys.length ? `<div class="season-journey-picker"><label for="season-journey-select">Progresso desta experiência</label><select id="season-journey-select">${journeys.map((j,i)=>`<option value="${esc(j.id)}" ${selectedJourney?.id===j.id?"selected":""}>Experiência ${String(journeys.length-i).padStart(2,"0")} — ${{in_progress:"Em andamento",paused:"Pausada",completed:"Concluída",abandoned:"Abandonada"}[j.status]||"Não definido"}</option>`).join("")}</select></div>` : `<p class="meta">Inicie uma experiência para acompanhar temporadas separadamente.</p>`}
       <div class="seasons-accordion">
         ${seasonsList.map(season => {
           const sn = String(season.number), data = savedSeasons[sn] || {};
@@ -680,14 +653,14 @@ async function loadSeriesSeasons(showId, savedNote, selectedJourneyId = "") {
               <span class="season-header-meta"><span>${count} / ${total} eps (${pct}%)</span><span class="season-progress-bar"><i style="width:${pct}%"></i></span><span class="season-chevron" aria-hidden="true">⌄</span></span>
             </button>
             <div class="season-content" id="season-content-${sn}" hidden>
-              ${isOwner() ? `<div class="season-rating-grid">
+              <div class="season-rating-grid">
                 <label>Nota da temporada (0–100)<input class="season-score-input" type="number" min="0" max="100" step="1" value="${scoreValue}" placeholder="Não avaliada"></label>
                 <label>Data de início${calendarPickerMarkup({name:"seasonStartedAt",value:data.startedAt||"",placeholder:"Selecionar data"})}</label>
                 <label>Data de conclusão${calendarPickerMarkup({name:"seasonEndedAt",value:data.endedAt||"",placeholder:"Selecionar data"})}</label>
-                <div class="season-save-row"><button type="button" class="btn-save-season-data" data-season="${sn}">Salvar temporada</button><span class="meta season-save-status" aria-live="polite"></span><button type="button" class="btn-toggle-season-watched" data-season="${sn}">${finished?"Desmarcar temporada":"Marcar temporada como assistida"}</button></div>
-              </div>` : `<div class="season-readonly-meta">${scoreValue !== "" ? `Nota: ${scoreValue}/100` : "Sem avaliação"}${data.startedAt ? ` · Início: ${esc(data.startedAt)}` : ""}${data.endedAt ? ` · Conclusão: ${esc(data.endedAt)}` : ""}</div>`}
+                <div class="season-save-row"><button type="button" class="btn-save-season-data" data-season="${sn}">Salvar temporada</button><span class="meta season-save-status" aria-live="polite"></span>${fbUser ? `<button type="button" class="btn-toggle-season-watched" data-season="${sn}">${finished?"Desmarcar temporada":"Marcar temporada como assistida"}</button>` : ""}</div>
+              </div>
               ${finished ? `<small class="season-finished-note">Temporada concluída nesta experiência.</small>` : ""}
-              <div class="episodes-grid">${episodes.map(ep=>`<button type="button" class="ep-btn ${watched.has(ep.number)?"watched":""}" ${!isOwner()?"disabled":""} data-season="${sn}" data-ep="${ep.number}" title="Episódio ${ep.number}">E${ep.number}</button>`).join("")}</div>
+              <div class="episodes-grid">${episodes.map(ep=>`<button type="button" class="ep-btn ${watched.has(ep.number)?"watched":""}" ${!fbUser?"disabled":""} data-season="${sn}" data-ep="${ep.number}" title="Episódio ${ep.number}">E${ep.number}</button>`).join("")}</div>
             </div>
           </section>`;
         }).join("")}
@@ -722,12 +695,8 @@ async function loadSeriesSeasons(showId, savedNote, selectedJourneyId = "") {
       if (score !== null && (!Number.isInteger(score) || score < 0 || score > 100)) { status.textContent = "A nota deve ser um número inteiro entre 0 e 100."; return; }
       const data = savedSeasons[sn] = savedSeasons[sn] || {watchedEpisodes:[]};
       if (score === null) delete data.score; else data.score = score;
-      const nextStartedAt = block.querySelector('[name="seasonStartedAt"]').value;
-      const nextEndedAt = block.querySelector('[name="seasonEndedAt"]').value;
-      data.startedAtSource = nextStartedAt ? (nextStartedAt !== String(data.startedAt || "") ? "user" : (data.startedAtSource || "legacy")) : "unknown";
-      data.endedAtSource = nextEndedAt ? (nextEndedAt !== String(data.endedAt || "") ? "user" : (data.endedAtSource || (data.endedAtAuto ? "automatic" : "legacy"))) : "unknown";
-      data.startedAt = nextStartedAt;
-      data.endedAt = nextEndedAt;
+      data.startedAt = block.querySelector('[name="seasonStartedAt"]').value;
+      data.endedAt = block.querySelector('[name="seasonEndedAt"]').value;
       delete data.endedAtAuto;
       status.textContent = "Salvando…"; btn.disabled = true;
       try {
@@ -749,9 +718,9 @@ async function loadSeriesSeasons(showId, savedNote, selectedJourneyId = "") {
       const previous = [...(data.watchedEpisodes || [])];
       data.watchedEpisodes = wasFinished ? [] : buttons.map(ep => Number(ep.dataset.ep));
       if (!wasFinished) {
-        if (!data.startedAt) { data.startedAt = localDateISO(); data.startedAtSource = "automatic"; }
-        if (!data.endedAt || data.endedAtAuto) { data.endedAt = localDateISO(); data.endedAtAuto = true; data.endedAtSource = "automatic"; }
-      } else if (data.endedAtAuto) { data.endedAt = ""; data.endedAtAuto = false; data.endedAtSource = "unknown"; }
+        if (!data.startedAt) data.startedAt = localDateISO();
+        if (!data.endedAt || data.endedAtAuto) { data.endedAt = localDateISO(); data.endedAtAuto = true; }
+      } else if (data.endedAtAuto) { data.endedAt = ""; data.endedAtAuto = false; }
       buttons.forEach(ep => ep.classList.toggle("watched", !wasFinished));
       btn.disabled = true;
       try {
@@ -777,11 +746,11 @@ async function loadSeriesSeasons(showId, savedNote, selectedJourneyId = "") {
       if (wasWatched) set.delete(epNum); else set.add(epNum);
       const previous = [...(data.watchedEpisodes || [])];
       data.watchedEpisodes = [...set];
-      if (!wasWatched && !data.startedAt) { data.startedAt = localDateISO(); data.startedAtSource = "automatic"; }
+      if (!wasWatched && !data.startedAt) data.startedAt = localDateISO();
       const total = block.querySelectorAll(".ep-btn").length;
       if (total > 0 && set.size >= total) {
         if (!data.endedAt || data.endedAtAuto) { data.endedAt = localDateISO(); data.endedAtAuto = true; }
-      } else if (data.endedAtAuto) { data.endedAt = ""; data.endedAtAuto = false; data.endedAtSource = "unknown"; }
+      } else if (data.endedAtAuto) { data.endedAt = ""; data.endedAtAuto = false; }
       btn.classList.toggle("watched", !wasWatched);
       btn.disabled = true;
       try {
@@ -930,7 +899,7 @@ function renderDiaryEntries(id, type, logs) {
       <div class="journey-list">${journeys.length ? journeys.map(j=>`<article class="journey-card">
         <div class="diary-entry-head"><strong>${label(j)}</strong><span class="meta">${statusText[j.status]||"Não definido"}</span></div>
         <small>${kindText(j)}${j.startedAt?` · Início: ${diaryDate(j.startedAt)}`:" · Data de início não informada"}${j.endedAt?` · Término: ${diaryDate(j.endedAt)}`:""}</small>
-        <div class="journey-card-meta"><span>${Number(j.score)>0?`Nota ${j.score}/100`:"Sem nota individual"}</span></div>
+        <div class="journey-card-meta">${isShow && (j.progressSeason||j.progressEpisode)?`<span>Temporada ${j.progressSeason||"—"} · Episódio ${j.progressEpisode||"—"}</span>`:""}<span>${Number(j.score)>0?`Nota ${j.score}/100`:"Sem nota individual"}</span></div>
         <div class="diary-actions"><button type="button" data-toggle-journey="${esc(j.id)}" aria-expanded="false">Editar experiência</button>
         ${j.status==="in_progress"?`<button type="button" data-journey-status="paused" data-journey-id="${esc(j.id)}">Pausar</button><button type="button" data-journey-status="completed" data-journey-id="${esc(j.id)}">Concluir</button><button type="button" data-journey-status="abandoned" data-journey-id="${esc(j.id)}">Abandonar</button>`:j.status==="paused"?`<button type="button" data-journey-status="in_progress" data-journey-id="${esc(j.id)}" ${active.length?"disabled":""}>Retomar</button>`:""}
         <button type="button" class="journey-delete-btn" data-delete-journey="${esc(j.id)}">Excluir experiência</button></div>
@@ -939,6 +908,7 @@ function renderDiaryEntries(id, type, logs) {
             <label>Status<select name="status"><option value="in_progress" ${j.status==="in_progress"?"selected":""}>Em andamento</option><option value="paused" ${j.status==="paused"?"selected":""}>Pausada</option><option value="completed" ${j.status==="completed"?"selected":""}>Concluída</option><option value="abandoned" ${j.status==="abandoned"?"selected":""}>Abandonada</option></select></label>
             <label>Nota individual (0–100)<div class="custom-number"><input name="score" type="number" min="0" max="100" step="1" value="${Number(j.score)>0?Number(j.score):""}" placeholder="Não avaliada"><span class="number-stepper"><button type="button" data-number-step="-1" aria-label="Diminuir nota">−</button><button type="button" data-number-step="1" aria-label="Aumentar nota">+</button></span></div></label>
             <label>Data de início${calendarPickerMarkup({name:"startedAt",value:j.startedAt||""})}<small>Deixe em branco se não souber.</small></label><label>Data de conclusão${calendarPickerMarkup({name:"endedAt",value:j.endedAt||""})}<small>Informe quando terminou; pode ficar em branco.</small></label>
+            ${isShow?`<label>Temporada atual<div class="custom-number"><input name="progressSeason" type="number" min="0" step="1" value="${j.progressSeason??""}"><span class="number-stepper"><button type="button" data-number-step="-1" aria-label="Diminuir temporada">−</button><button type="button" data-number-step="1" aria-label="Aumentar temporada">+</button></span></div></label><label>Episódio atual<div class="custom-number"><input name="progressEpisode" type="number" min="0" step="1" value="${j.progressEpisode??""}"><span class="number-stepper"><button type="button" data-number-step="-1" aria-label="Diminuir episódio">−</button><button type="button" data-number-step="1" aria-label="Aumentar episódio">+</button></span></div></label>`:""}
             <label class="journey-edit-wide">Observações desta experiência<textarea name="notes" rows="4" maxlength="10000" placeholder="Anotações sobre esta jornada…">${esc(j.notes||"")}</textarea></label>
           </div><div class="journey-edit-footer"><span class="diary-status" role="status"></span><button type="button" data-cancel-journey="${esc(j.id)}">Cancelar</button><button type="submit" class="journey-save-btn">Salvar alterações</button></div>
         </form>
@@ -993,13 +963,14 @@ function renderDiaryEntries(id, type, logs) {
       return;
     }
     const action=e.target.closest("[data-journey-status]");
-    if(action){action.disabled=true;const status=action.dataset.journeyStatus;try{await hubFB.updateJourney(action.dataset.journeyId,{status,...(status==="completed"||status==="abandoned"?{endedAt:localDateISO(),endedAtSource:"automatic"}:{})});await loadCatalog();await loadDiary(id,type);}catch(err){alert(`Não foi possível atualizar: ${err.message||err.code}`);action.disabled=false;}return;}
+    if(action){action.disabled=true;const status=action.dataset.journeyStatus;try{await hubFB.updateJourney(action.dataset.journeyId,{status,...(status==="completed"||status==="abandoned"?{endedAt:localDateISO()}:{})});await loadCatalog();await loadDiary(id,type);}catch(err){alert(`Não foi possível atualizar: ${err.message||err.code}`);action.disabled=false;}return;}
   };
   experienceRoot.onsubmit = async e => {
     const form=e.target.closest("[data-journey-form]"); if(!form)return; e.preventDefault();
     const d=new FormData(form), status=String(d.get("status")||"in_progress"), raw=String(d.get("score")||"").trim(), score=raw===""?0:Number(raw), msg=form.querySelector(".diary-status");
     if(!Number.isInteger(score)||score<0||score>100){msg.textContent="A nota deve estar entre 0 e 100.";return;}
     const payload={status,score,startedAt:String(d.get("startedAt")||""),endedAt:String(d.get("endedAt")||""),notes:String(d.get("notes")||"").trim()};
+    if(isShow){const a=String(d.get("progressSeason")||"").trim(),b=String(d.get("progressEpisode")||"").trim();payload.progressSeason=a===""?"":Number(a);payload.progressEpisode=b===""?"":Number(b);if([payload.progressSeason,payload.progressEpisode].some(v=>v!==""&&(!Number.isInteger(v)||v<0))){msg.textContent="Temporada e episódio devem ser inteiros positivos ou zero.";return;}}
     if(["completed","abandoned"].includes(journeys.find(j=>String(j.id)===form.dataset.journeyForm)?.status)&&["in_progress","paused"].includes(status)){msg.textContent="Uma experiência encerrada não pode ser reaberta.";return;}
     if(status==="in_progress"||status==="paused")payload.endedAt="";
     const save=form.querySelector('button[type="submit"]');save.disabled=true;msg.textContent="Salvando…";
@@ -1185,7 +1156,7 @@ document.addEventListener("click",async e=>{
   if(quick){const action=quick.dataset.quick;if(action==="discover"){if(!fbUser)return;document.querySelector('[data-tab="descobrir"]')?.click();}else if(action==="search"){if(!fbUser)return;document.querySelector('[data-tab="descobrir"]')?.click();setTimeout(()=>$ ("tmdb-search-input")?.focus(),50);}else if(action==="watchlist"){tab="filmes";render();document.querySelector('[data-tab="filmes"]')?.click();$("filter-status").value="plantowatch";render();}else if(action==="random"){const pool=[...movies,...shows].filter(x=>x.status==="plantowatch");if(pool.length){const pick=pool[Math.floor(Math.random()*pool.length)];openItem(pick.id,pick.type);}else alert("Adicione títulos à sua lista para usar esta função.");}return;}
   const cat=e.target.closest("[data-discover-category]");if(cat){discoverView=cat.dataset.discoverCategory;discoverPage=1;renderDiscover();return;}
   if(e.target.closest("[data-discover-home]")){discoverView="home";renderDiscover();return;}
-  const page=e.target.closest("[data-discover-page]");if(page){discoverPage=Math.max(1,discoverPage+(page.dataset.discoverPage==="next"?1:-1));renderDiscover();window.scrollTo({top:0,behavior:"smooth"});return;}
+  const page=e.target.closest("[data-discover-page]");if(page){discoverPage=Math.max(1,discoverPage+(page.dataset.discoverPage==="next"?1:-1));renderDiscover();return;}
   const searchPageButton=e.target.closest("[data-search-page]");if(searchPageButton){runDiscoverSearch(Math.max(1,searchPage+(searchPageButton.dataset.searchPage==="next"?1:-1)));return;}
   if(e.target.closest("[data-discover-retry]")){discoverCache.delete(`${discoverView}:${discoverPage}`);renderDiscover();return;}
   const preview=e.target.closest("[data-preview-id]");if(preview&&!e.target.closest("[data-add-tmdb],[data-manual-add],[data-edit-catalog]")){openTmdbPreview(preview.dataset.previewId,preview.dataset.previewType);return;}
@@ -1197,30 +1168,8 @@ document.addEventListener("click",async e=>{
   if(!fbUser||!window.hubFB){alert("Entre com sua conta Google para adicionar títulos.");return;}
   const id=button.dataset.addTmdb, mediaType=button.dataset.mediaType||tmdbSearchResults.find(x=>String(x.id)===id)?.mediaType; if(!mediaType)return;
   button.disabled=true;button.classList.add("is-loading");button.title="Adicionando…";
-  const preservedSearch = {
-    query: $("tmdb-search-input")?.value ?? searchQuery,
-    type: $("tmdb-search-type")?.value ?? searchType,
-    page: searchPage
-  };
-  try {
-    const r=await fetch(`${TMDB_WORKER_URL}/api/tmdb/${mediaType}/${id}`);
-    if(!r.ok)throw new Error("Não foi possível carregar os detalhes do título.");
-    const detail=await r.json();
-    const selectedStatus=button.dataset.addStatus || "plantowatch";
-    await hubFB.addCatalogItem({...detail,status:selectedStatus});
-    await loadCatalog();
-    if (tab === "descobrir" && discoverView === "home" && preservedSearch.query.trim().length >= 2) {
-      $("tmdb-search-input").value = preservedSearch.query;
-      $("tmdb-search-type").value = preservedSearch.type;
-      await runDiscoverSearch(preservedSearch.page);
-    }
-  } catch(err) {
-    console.error(err);
-    button.disabled=false;
-    button.classList.remove("is-loading");
-    button.title="Tentar novamente";
-    alert(`Não foi possível adicionar: ${err.code||err.message}`);
-  }
+  try{const r=await fetch(`${TMDB_WORKER_URL}/api/tmdb/${mediaType}/${id}`);if(!r.ok)throw new Error("Não foi possível carregar os detalhes do título.");const detail=await r.json();const selectedStatus=button.dataset.addStatus || "plantowatch";await hubFB.addCatalogItem({...detail,status:selectedStatus});await loadCatalog();button.classList.remove("is-loading");button.title="Adicionado à biblioteca";button.closest(".tmdb-result,.discover-card")?.classList.add("is-added");}
+  catch(err){console.error(err);button.disabled=false;button.classList.remove("is-loading");button.title="Tentar novamente";alert(`Não foi possível adicionar: ${err.code||err.message}`);}
 });
 
 /* Inicialização */
