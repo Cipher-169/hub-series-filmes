@@ -1932,33 +1932,159 @@ body.discover-mode .top { padding-top:14px; padding-bottom:14px; }
 .app-confirm-actions .app-confirm-ok.is-danger:hover { background:#bd5149; }
 
 
-/* V28 — progresso e avaliação de temporadas por experiência */
-.season-journey-select {
-  display:grid; gap:7px; margin:12px 0 14px;
+/* V36 — ajuste do calendário no formulário do Diário */
+.diary-form .diary-date-field {
+  grid-column: 1 / -1;
+  width: min(100%, 300px);
+  min-width: 0;
 }
-.season-journey-select label,
-.season-rating-grid label {
-  display:grid; gap:6px; color:var(--muted); font-size:.78rem;
+.diary-form .diary-date-field > label:first-child {
+  display: block;
+  margin-bottom: 6px;
 }
-.season-journey-select select,
-.season-rating-grid input {
-  width:100%; min-width:0; border:1px solid var(--line); border-radius:9px;
-  padding:10px 12px; background:#171614; color:var(--text); font:inherit;
+.diary-form .diary-date-field .hub-calendar { width: 100%; }
+.diary-form .hub-calendar-trigger {
+  display: flex;
+  width: 100%;
+  min-height: 44px;
+  align-items: center;
+  justify-self: stretch;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid rgba(231,216,190,.22);
+  border-radius: 9px;
+  background: #171613;
+  color: var(--text,#f2e7d5);
+  text-align: left;
+  font: inherit;
+  font-weight: 400;
 }
-.season-details {
-  padding:12px 14px; border-top:1px solid var(--line); background:rgba(255,255,255,.015);
+.diary-form .hub-calendar-trigger:hover,
+.diary-form .hub-calendar-trigger[aria-expanded="true"] {
+  border-color: var(--gold,#d0ad78);
+  background: #1d1a16;
 }
-.season-rating-grid {
-  display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; align-items:end;
+.diary-form .hub-calendar-trigger:disabled {
+  opacity: .45;
+  cursor: not-allowed;
 }
-.season-rating-grid .hub-calendar { min-width:0; }
-.season-rating-grid .hub-calendar-trigger { width:100%; min-width:0; }
-.season-rating-grid .btn-save-season-data {
-  grid-column:1/-1; justify-self:start; border:1px solid var(--gold); border-radius:999px;
-  padding:8px 16px; background:var(--gold); color:#211a10; font-weight:600; cursor:pointer;
+.diary-form .hub-calendar-popover {
+  width: min(292px, calc(100vw - 56px));
 }
-.season-finished-note { display:block; margin-top:9px; color:var(--muted); }
-@media(max-width:650px) {
-  .season-rating-grid { grid-template-columns:1fr; }
-  .season-rating-grid .btn-save-season-data { grid-column:auto; }
+.diary-form .hub-calendar-head button {
+  justify-self: center;
+  width: 32px;
+  min-height: 32px;
+  padding: 0;
+  border: 1px solid #494137;
+  border-radius: 8px;
+  background: #2b2823;
+  color: #e9c895;
+  font-size: 22px;
+  font-weight: 400;
+}
+.diary-form .hub-calendar-day {
+  justify-self: stretch;
+  width: 100%;
+  min-height: 0;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: #eee2d0;
+  font: inherit;
+  font-size: .82rem;
+  font-weight: 500;
+}
+.diary-form .hub-calendar-day.is-selected {
+  background: #d3b17d;
+  color: #211a11;
+  border-color: #e6c997;
+  font-weight: 800;
+}
+.diary-form .hub-calendar-foot button {
+  justify-self: auto;
+  width: auto;
+  min-height: 0;
+  padding: 5px 7px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #e3bd83;
+  font-size: .78rem;
+  font-weight: 600;
+}
+.diary-form .diary-forgot-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: fit-content;
+  margin-top: 9px;
+  color: #c3b69f;
+  cursor: pointer;
+}
+.diary-form .diary-forgot-label input {
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  accent-color: var(--gold,#d0ad78);
+}
+
+/* V37 — padronização do Diário e seletor de experiência das temporadas */
+.diary-edit-form {
+  display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px;
+  padding:16px; border:1px solid var(--line); border-radius:12px;
+  background:rgba(255,255,255,.025); min-width:0;
+}
+.diary-edit-form label { display:grid; align-content:start; gap:7px; min-width:0; color:var(--muted); font-size:.78rem; }
+.diary-edit-form label:has(textarea),
+.diary-edit-form label:has(select[name="journeyId"]) { grid-column:1/-1; }
+.diary-edit-form input,.diary-edit-form textarea,.diary-edit-form select {
+  box-sizing:border-box; width:100%; min-width:0; border:1px solid var(--line);
+  border-radius:9px; padding:11px 12px; background:#171613; color:var(--text); font:inherit;
+}
+.diary-edit-form textarea { min-height:112px; resize:vertical; }
+.diary-edit-form .hub-calendar { width:100%; min-width:0; }
+.diary-edit-form .hub-calendar-trigger { box-sizing:border-box; min-width:0; width:100%; min-height:44px; }
+.diary-edit-form .hub-calendar-trigger span:nth-child(2) { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.diary-edit-form .diary-actions { grid-column:1/-1; display:flex; flex-wrap:wrap; gap:8px; }
+.diary-edit-form .diary-actions button { border:1px solid var(--line); border-radius:999px; padding:9px 15px; background:transparent; color:var(--text); cursor:pointer; }
+.diary-edit-form .diary-actions button[type="submit"] { border-color:transparent; background:var(--sun); color:#211a10; font-weight:700; }
+.diary-form .diary-date-field { box-sizing:border-box; width:100%; max-width:100%; min-width:0; }
+.diary-form .diary-date-field .hub-calendar-trigger { box-sizing:border-box; min-width:0; width:100%; }
+.diary-form .diary-date-field .hub-calendar-trigger span:nth-child(2) { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.season-journey-picker { display:grid; gap:7px; max-width:520px; margin:0 0 14px; }
+.season-journey-picker label { color:var(--muted); font-size:.78rem; }
+.season-journey-picker select { width:100%; min-width:0; padding:11px 13px; border:1px solid var(--line); border-radius:9px; background:#171613; color:var(--text); font:inherit; }
+@media(max-width:560px) { .diary-edit-form { grid-template-columns:minmax(0,1fr); } .diary-edit-form label,.diary-edit-form label:has(textarea),.diary-edit-form label:has(select[name="journeyId"]) { grid-column:1; } }
+
+/* V38 — temporadas recolhíveis, ação em lote e campos de data responsivos */
+.season-block { overflow: hidden; }
+.season-header {
+  width: 100%; min-width: 0; padding: 14px; border: 0; background: transparent;
+  color: var(--text); text-align: left; display: flex; justify-content: space-between;
+  align-items: center; gap: 12px; cursor: pointer; user-select: none;
+}
+.season-header:hover { background: rgba(211,177,125,.055); }
+.season-title { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; min-width: 0; }
+.season-header-meta { display: flex; align-items: center; justify-content: flex-end; gap: 10px; min-width: 0; }
+.season-chevron { color: var(--sun); font-size: 1.2rem; transition: transform .18s ease; }
+.season-header[aria-expanded="true"] .season-chevron { transform: rotate(180deg); }
+.season-content[hidden] { display: none !important; }
+.season-bulk-actions { display: flex; justify-content: flex-end; padding: 10px 14px 0; }
+.season-bulk-actions button {
+  border: 1px solid var(--line); border-radius: 999px; padding: 8px 13px;
+  background: rgba(211,177,125,.10); color: var(--text); font: inherit; font-size: .8rem;
+  cursor: pointer; transition: .15s;
+}
+.season-bulk-actions button:hover { border-color: var(--sun); background: rgba(211,177,125,.18); }
+.season-bulk-actions button:disabled { opacity: .55; cursor: wait; }
+.hub-calendar, .hub-calendar-trigger { box-sizing: border-box; min-width: 0; max-width: 100%; }
+.hub-calendar-trigger { overflow: hidden; }
+.hub-calendar-trigger > span:nth-child(2) { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hub-calendar-popover { box-sizing: border-box; max-width: calc(100vw - 32px); }
+@media (max-width: 560px) {
+  .season-header { align-items: flex-start; flex-direction: column; }
+  .season-header-meta { width: 100%; justify-content: space-between; }
+  .season-progress-bar { width: min(90px, 22vw); }
 }

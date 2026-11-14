@@ -5,7 +5,7 @@
    CONTROLE DE VERSÃO:
    Sempre que modificar este arquivo incremente HUB_VERSION em +1.
    ===================================================================== */
-const HUB_VERSION = 28;
+const HUB_VERSION = 29;
 window.HUB_VERSION = HUB_VERSION;
 document.getElementById("project-version").textContent = `v${HUB_VERSION}`;
 
@@ -44,6 +44,23 @@ const badge   = s => {
   const t = tierFor(s);
   return `<span class="badge" style="--c:${t[2]}">${s}<small>${t[1]}</small></span>`;
 };
+
+const TMDB_STATUS_PT = {
+  "Returning Series": "Em exibição",
+  "Ended": "Finalizada",
+  "Canceled": "Cancelada",
+  "Cancelled": "Cancelada",
+  "In Production": "Em produção",
+  "Planned": "Planejada",
+  "Pilot": "Piloto",
+  "Rumored": "Rumorada",
+  "Post Production": "Pós-produção",
+  "Released": "Lançado",
+};
+function translateTmdbStatus(value) {
+  const raw = String(value || "").trim();
+  return TMDB_STATUS_PT[raw] || raw;
+}
 
 /* =====================================================================
    RENDERIZAÇÃO DE VIEWS
@@ -400,7 +417,7 @@ async function openItem(id, type, previewData = null) {
           ${isShow && item.numberOfEpisodes ? `<div><small>EPISÓDIOS</small><strong>${item.numberOfEpisodes}</strong></div>` : ""}
           ${item.voteAverage ? `<div><small>NOTA TMDB</small><strong>★ ${Number(item.voteAverage).toFixed(1)} / 10</strong></div>` : ""}
           ${item.originalTitle ? `<div><small>TÍTULO ORIGINAL</small><strong>${esc(item.originalTitle)}</strong></div>` : ""}
-          ${item.statusText ? `<div><small>SITUAÇÃO</small><strong>${esc(item.statusText)}</strong></div>` : ""}
+          ${item.statusText ? `<div><small>SITUAÇÃO</small><strong>${esc(translateTmdbStatus(item.statusText))}</strong></div>` : ""}
           ${item.networks?.length ? `<div><small>EMISSORAS</small><strong>${esc(item.networks.join(" · "))}</strong></div>` : ""}
           ${item.productionCountries?.length ? `<div><small>PAÍS DE ORIGEM</small><strong>${esc(item.productionCountries.join(" · "))}</strong></div>` : ""}
           ${item.originalLanguage ? `<div><small>IDIOMA ORIGINAL</small><strong>${esc(item.originalLanguage.toUpperCase())}</strong></div>` : ""}
@@ -527,81 +544,197 @@ async function openItem(id, type, previewData = null) {
 }
 
 /* ---- Carrega temporadas e episódios de série ---- */
-async function loadSeriesSeasons(showId, savedNote) {
+async function loadSeriesSeasons(showId, savedNote, selectedJourneyId = "") {
   const container = $("series-seasons-container");
   if (!container) return;
+
   try {
     let seasonsData = showSeasonsCache.get(showId);
     if (!seasonsData) {
       const response = await fetch(`${TMDB_WORKER_URL}/api/tmdb/tv/${encodeURIComponent(showId)}`);
       if (!response.ok) throw new Error(`TMDB respondeu com HTTP ${response.status}`);
       const detail = await response.json();
-      seasonsData = await Promise.all((detail.seasons || []).map(async season => {
+      const seasons = detail.seasons || [];
+      seasonsData = await Promise.all(seasons.map(async season => {
         const result = await fetch(`${TMDB_WORKER_URL}/api/tmdb/tv/${encodeURIComponent(showId)}/season/${season.seasonNumber}`);
         if (!result.ok) throw new Error(`Não foi possível carregar a temporada ${season.seasonNumber}.`);
         const data = await result.json();
-        return { number:data.seasonNumber, name:data.name, episode_count:data.episodes?.length||season.episodeCount||0,
-          episodes:(data.episodes||[]).map(ep=>({number:ep.number,name:ep.name,overview:ep.overview,stillUrl:ep.stillUrl})) };
+        return { number: data.seasonNumber, name: data.name, episode_count: data.episodes?.length || season.episodeCount || 0,
+          episodes: (data.episodes || []).map(ep => ({ number: ep.number, name: ep.name, overview: ep.overview, stillUrl: ep.stillUrl })) };
       }));
-      showSeasonsCache.set(showId,seasonsData);
+      showSeasonsCache.set(showId, seasonsData);
     }
-    const regularSeasons=seasonsData.filter(s=>s.number>0), seasonsList=regularSeasons.length?regularSeasons:seasonsData;
-    let journeys = fbUser ? await hubFB.getItemJourneys(showId,"show") : [];
-    if (!journeys.length) {
-      container.innerHTML=`<h3 style="font:600 1.25rem var(--serif);margin:20px 0 10px">Temporadas &amp; Episódios</h3><div class="msg">Inicie uma experiência em “Minhas experiências” para acompanhar episódios e avaliar temporadas separadamente.</div>`;
+    if (!seasonsData || !seasonsData.length) {
+      container.innerHTML = `<div class="msg">Informações de temporadas indisponíveis no momento.</div>`;
       return;
     }
-    let selectedId = container.dataset.selectedJourney || journeys.find(j=>j.status==="in_progress")?.id || journeys[0].id;
-    if (!journeys.some(j=>j.id===selectedId)) selectedId=journeys[0].id;
-    const selected=journeys.find(j=>j.id===selectedId);
-    // Migração de leitura: dados antigos da obra são exibidos na primeira experiência,
-    // mas novas alterações passam a ser salvas dentro da experiência.
-    const savedSeasons = selected.seasons || (selected===journeys[journeys.length-1] ? (savedNote?.seasons||{}) : {});
-    const journeyLabel = j => {
-      const index=journeys.findIndex(x=>x.id===j.id);
-      return `Experiência ${String(journeys.length-index).padStart(2,"0")} — ${{in_progress:"Em andamento",paused:"Pausada",completed:"Concluída",abandoned:"Abandonada"}[j.status]||"Experiência"}`;
+
+    // Filtra temporada 0 (especiais) se vazia, foca em temporadas regulares
+    const regularSeasons = seasonsData.filter(s => s.number > 0);
+    const seasonsList = regularSeasons.length ? regularSeasons : seasonsData;
+
+    // O progresso de temporadas pertence a uma experiência específica.
+    const journeys = fbUser && hubFB?.getItemJourneys ? await hubFB.getItemJourneys(showId, "show") : [];
+    const selectedJourney = journeys.find(j => String(j.id) === String(selectedJourneyId)) || journeys.find(j => j.status === "in_progress") || journeys[0] || null;
+    const savedSeasons = selectedJourney?.seasons || (journeys.length ? {} : (savedNote?.seasons || {}));
+    const saveSeasonData = async () => {
+      if (selectedJourney) await hubFB.updateJourney(selectedJourney.id, { seasons: savedSeasons });
+      else await hubFB.saveItemNote(showId, "show", { seasons: savedSeasons });
     };
-    container.dataset.selectedJourney=selectedId;
-    container.innerHTML=`
+
+    container.innerHTML = `
       <h3 style="font:600 1.25rem var(--serif);margin:20px 0 10px">Temporadas &amp; Episódios</h3>
-      <div class="season-journey-select"><label for="season-journey-select">Progresso desta experiência</label><select id="season-journey-select">${journeys.map(j=>`<option value="${esc(j.id)}" ${j.id===selectedId?"selected":""}>${esc(journeyLabel(j))}</option>`).join("")}</select></div>
+      ${journeys.length ? `<div class="season-journey-picker"><label for="season-journey-select">Progresso desta experiência</label><select id="season-journey-select">${journeys.map(j=>`<option value="${esc(j.id)}" ${selectedJourney?.id===j.id?"selected":""}>Experiência ${String(journeys.length-journeys.indexOf(j)).padStart(2,"0")} — ${{in_progress:"Em andamento",paused:"Pausada",completed:"Concluída",abandoned:"Abandonada"}[j.status]||"Não definido"}</option>`).join("")}</select></div>` : `<p class="meta">Inicie uma experiência para acompanhar temporadas separadamente.</p>`}
       <div class="seasons-accordion">
-      ${seasonsList.map(s=>{
-        const sn=String(s.number), data=savedSeasons[sn]||{}, watched=new Set(data.watchedEpisodes||[]), total=s.episode_count||s.episodes?.length||0, count=watched.size, pct=total?Math.round(count/total*100):0, finished=total>0&&count>=total;
-        return `<div class="season-block" data-season="${sn}">
-          <div class="season-header" data-toggle-season="${sn}"><div><strong>Temporada ${sn}</strong>${Number(data.score)>0?` · ${badge(data.score)}`:""}</div><div class="season-header-meta"><span>${count} / ${total} eps (${pct}%)</span><div class="season-progress-bar"><i style="width:${pct}%"></i></div></div></div>
-          <div class="season-details">
-            <div class="season-rating-grid">
-              <label>Nota da temporada (0–100)<div class="custom-number"><input class="season-score-input" type="number" min="0" max="100" step="1" value="${Number(data.score)>0?Number(data.score):""}" placeholder="Não avaliada"></div></label>
-              <label>Data de início${calendarPickerMarkup({name:"seasonStartedAt",value:data.startedAt||"",placeholder:"Selecionar data"})}</label>
-              <label>Data de conclusão${calendarPickerMarkup({name:"seasonEndedAt",value:data.endedAt||"",placeholder:"Selecionar data"})}</label>
-              <button type="button" class="btn-save-season-data" data-season="${sn}">Salvar temporada</button><span class="meta season-save-status"></span>
-            </div>
-            ${finished?`<small class="season-finished-note">Temporada concluída nesta experiência.</small>`:""}
-          </div>
-          <div class="episodes-grid" id="episodes-season-${sn}">${(s.episodes||Array.from({length:total},(_,i)=>({number:i+1}))).map(ep=>`<button type="button" class="ep-btn ${watched.has(ep.number)?"watched":""}" data-season="${sn}" data-ep="${ep.number}" title="Episódio ${ep.number}">E${ep.number}</button>`).join("")}</div>
-        </div>`;
-      }).join("")}</div>`;
-    container.querySelector("#season-journey-select")?.addEventListener("change",e=>{container.dataset.selectedJourney=e.target.value;loadSeriesSeasons(showId,savedNote);});
-    container.querySelectorAll(".ep-btn").forEach(btn=>btn.addEventListener("click",async()=>{
-      const sn=btn.dataset.season, ep=Number(btn.dataset.ep), data=savedSeasons[sn]||(savedSeasons[sn]={watchedEpisodes:[]}), set=new Set(data.watchedEpisodes||[]);
-      if(set.has(ep)){set.delete(ep);btn.classList.remove("watched");}else{set.add(ep);btn.classList.add("watched");}
-      data.watchedEpisodes=[...set];
-      const block=btn.closest(".season-block"),total=block.querySelectorAll(".ep-btn").length;
-      if(total>0 && set.size>=total && !data.endedAt){data.endedAt=localDateISO();data.endedAtAuto=true;}
-      else if(set.size<total && data.endedAtAuto){data.endedAt="";data.endedAtAuto=false;}
-      try{await hubFB.updateJourney(selectedId,{seasons:savedSeasons});const pct=total?Math.round(set.size/total*100):0;block.querySelector(".season-header-meta span").textContent=`${set.size} / ${total} eps (${pct}%)`;block.querySelector(".season-progress-bar i").style.width=`${pct}%`;const endInput=block.querySelector('[name="seasonEndedAt"]');if(endInput)endInput.value=data.endedAt||"";const endLabel=block.querySelector('[name="seasonEndedAt"]')?.closest(".hub-calendar")?.querySelector(".hub-calendar-trigger span:not(.hub-calendar-chevron)");if(endLabel)endLabel.textContent=data.endedAt?diaryDate(data.endedAt):"Selecionar data";}
-      catch(err){alert(`Não foi possível salvar o episódio: ${err.message||err.code}`);btn.classList.toggle("watched");}
-    }));
-    container.querySelectorAll(".btn-save-season-data").forEach(btn=>btn.addEventListener("click",async()=>{
-      const sn=btn.dataset.season, block=btn.closest(".season-block"), raw=block.querySelector(".season-score-input").value.trim(), score=raw===""?0:Number(raw), start=block.querySelector('[name="seasonStartedAt"]').value, end=block.querySelector('[name="seasonEndedAt"]').value, status=block.querySelector(".season-save-status");
-      if(!Number.isInteger(score)||score<0||score>100){status.textContent="A nota deve estar entre 0 e 100.";return;}
-      const data=savedSeasons[sn]||(savedSeasons[sn]={watchedEpisodes:[]});data.score=score;data.startedAt=start;data.endedAt=end;
-      if(!data.endedAt && (seasonsList.find(s=>String(s.number)===sn)?.episode_count||0)>0 && data.watchedEpisodes?.length >= seasonsList.find(s=>String(s.number)===sn).episode_count) data.endedAt=localDateISO();
-      status.textContent="Salvando…";btn.disabled=true;
-      try{await hubFB.updateJourney(selectedId,{seasons:savedSeasons});status.textContent="Salvo!";}catch(err){status.textContent=`Erro: ${err.message||err.code}`;}finally{btn.disabled=false;}
-    }));
-  } catch(e){container.innerHTML=`<div class="msg err">Não foi possível carregar as temporadas (${esc(e.message)}).</div>`;}
+        ${seasonsList.map(s => {
+          const sNum = String(s.number);
+          const sSaved = savedSeasons[sNum] || {};
+          const watchedEps = new Set(sSaved.watchedEpisodes || []);
+          const totalEps = s.episode_count || s.episodes?.length || 0;
+          const watchedCount = watchedEps.size;
+          const pct = totalEps ? Math.round((watchedCount / totalEps) * 100) : 0;
+          const isFinished = totalEps > 0 && watchedCount >= totalEps;
+          const sScore = sSaved.score || 0;
+
+          return `
+            <div class="season-block" data-season="${sNum}">
+              <button type="button" class="season-header" data-toggle-season="${sNum}" aria-expanded="false" aria-controls="episodes-season-${sNum}">
+                <span class="season-title"><strong>Temporada ${sNum}</strong>${sScore > 0 ? ` · ${badge(sScore)}` : ""}</span>
+                <span class="season-header-meta">
+                  <span>${watchedCount} / ${totalEps} eps (${pct}%)</span>
+                  <span class="season-progress-bar"><i style="width:${pct}%"></i></span>
+                  <span class="season-chevron" aria-hidden="true">⌄</span>
+                </span>
+              </button>
+
+              <!-- Sugestão opcional de nota ao concluir temporada -->
+              ${isFinished && fbUser ? `
+                <div class="season-score-prompt">
+                  <strong>🎉 Temporada ${sNum} concluída!</strong>
+                  <div style="display:flex;gap:8px;align-items:center;margin-top:6px;flex-wrap:wrap">
+                    <span>Avalie esta temporada (opcional):</span>
+                    <input type="number" min="0" max="100" class="season-score-input" value="${sScore > 0 ? sScore : ""}" placeholder="0–100" style="width:70px;background:#090c16;border:1px solid rgba(255,145,107,.4);border-radius:7px;padding:4px 7px;color:#fff">
+                    <button type="button" class="btn-save-season-score" data-season="${sNum}" style="background:var(--sun);color:#1a0d08;border:0;border-radius:99px;padding:4px 12px;font-weight:600;font-size:.8rem">Salvar</button>
+                    <span class="meta status-season-${sNum}"></span>
+                  </div>
+                </div>` : ""}
+
+              <div class="season-content" id="episodes-season-${sNum}" hidden>
+                ${fbUser ? `<div class="season-bulk-actions"><button type="button" class="btn-toggle-season-watched" data-season="${sNum}" data-total="${totalEps}">${isFinished ? "Desmarcar temporada" : "Marcar temporada como assistida"}</button></div>` : ""}
+                <div class="episodes-grid">
+                ${(s.episodes || Array.from({ length: totalEps }, (_, i) => ({ number: i + 1 }))).map(ep => {
+                  const epNum = ep.number;
+                  const isWatched = watchedEps.has(epNum);
+                  return `<button type="button" class="ep-btn ${isWatched ? "watched" : ""}" ${!fbUser ? "disabled" : ""} data-season="${sNum}" data-ep="${epNum}" title="Episódio ${epNum}">E${epNum}</button>`;
+                }).join("")}
+                </div>
+              </div>
+            </div>`;
+        }).join("")}
+      </div>`;
+
+    // Troca a experiência sem misturar o progresso de temporadas.
+    container.querySelector("#season-journey-select")?.addEventListener("change", e => loadSeriesSeasons(showId, savedNote, e.target.value));
+
+    // Temporadas começam recolhidas; o cabeçalho abre/fecha o conteúdo.
+    container.querySelectorAll("[data-toggle-season]").forEach(header => {
+      header.addEventListener("click", () => {
+        const content = header.closest(".season-block")?.querySelector(".season-content");
+        if (!content) return;
+        content.hidden = !content.hidden;
+        header.setAttribute("aria-expanded", String(!content.hidden));
+      });
+    });
+
+    // Marca ou desmarca todos os episódios de uma temporada de uma só vez.
+    container.querySelectorAll(".btn-toggle-season-watched").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        const sNum = btn.dataset.season;
+        const block = btn.closest(".season-block");
+        const episodeButtons = [...block.querySelectorAll(".ep-btn")];
+        const sSaved = savedSeasons[sNum] = savedSeasons[sNum] || { watchedEpisodes: [] };
+        const allWatched = episodeButtons.length > 0 && episodeButtons.every(ep => ep.classList.contains("watched"));
+        const next = allWatched ? [] : episodeButtons.map(ep => Number(ep.dataset.ep));
+        sSaved.watchedEpisodes = next;
+        episodeButtons.forEach(ep => ep.classList.toggle("watched", !allWatched));
+        const count = next.length, total = episodeButtons.length, pct = total ? Math.round(count / total * 100) : 0;
+        const meta = block.querySelector(".season-header-meta > span");
+        const bar = block.querySelector(".season-progress-bar i");
+        if (meta) meta.textContent = `${count} / ${total} eps (${pct}%)`;
+        if (bar) bar.style.width = `${pct}%`;
+        btn.textContent = allWatched ? "Marcar temporada como assistida" : "Desmarcar temporada";
+        btn.disabled = true;
+        try { if (window.hubFB && fbUser) await saveSeasonData(); }
+        catch (err) { console.warn("Erro ao atualizar temporada:", err); btn.textContent = "Erro ao salvar — tente novamente"; }
+        finally { btn.disabled = false; }
+      });
+    });
+
+    // Eventos: Marcar/Desmarcar episódio ao clicar
+    container.querySelectorAll(".ep-btn").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        const sNum  = btn.dataset.season;
+        const epNum = Number(btn.dataset.ep);
+        const sSaved = savedSeasons[sNum] = savedSeasons[sNum] || { watchedEpisodes: [] };
+        const watchedSet = new Set(sSaved.watchedEpisodes || []);
+
+        if (watchedSet.has(epNum)) {
+          watchedSet.delete(epNum);
+          btn.classList.remove("watched");
+        } else {
+          watchedSet.add(epNum);
+          btn.classList.add("watched");
+        }
+        sSaved.watchedEpisodes = [...watchedSet];
+
+        if (window.hubFB && fbUser) {
+          try {
+            await saveSeasonData();
+          } catch (err) {
+            console.warn("Erro ao salvar episódio:", err);
+          }
+        }
+        // Atualiza contadores visuais da temporada
+        const seasonBlock = btn.closest(".season-block");
+        const totalEps = seasonBlock.querySelectorAll(".ep-btn").length;
+        const count = watchedSet.size;
+        const pct = totalEps ? Math.round((count / totalEps) * 100) : 0;
+        const metaSpan = seasonBlock.querySelector(".season-header-meta span");
+        const barI = seasonBlock.querySelector(".season-progress-bar i");
+        if (metaSpan) metaSpan.textContent = `${count} / ${totalEps} eps (${pct}%)`;
+        if (barI) barI.style.width = `${pct}%`;
+        const bulk = seasonBlock.querySelector(".btn-toggle-season-watched");
+        if (bulk) bulk.textContent = count === totalEps ? "Desmarcar temporada" : "Marcar temporada como assistida";
+      });
+    });
+
+    // Eventos: Salvar nota de temporada
+    container.querySelectorAll(".btn-save-season-score").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        const sNum = btn.dataset.season;
+        const prompt = btn.closest(".season-score-prompt");
+        const input = prompt.querySelector(".season-score-input");
+        const statusEl = prompt.querySelector(`.status-season-${sNum}`);
+        const scoreVal = Math.min(100, Math.max(0, Number(input.value) || 0));
+
+        statusEl.textContent = "Salvando…";
+        savedSeasons[sNum] = savedSeasons[sNum] || {};
+        savedSeasons[sNum].score = scoreVal;
+
+        if (window.hubFB && fbUser) {
+          try {
+            await saveSeasonData();
+            statusEl.textContent = "Salvo!";
+          } catch (err) {
+            statusEl.textContent = "Erro: " + (err.message || err.code);
+          }
+        }
+      });
+    });
+
+  } catch (e) {
+    container.innerHTML = `<div class="msg err">Não foi possível carregar as temporadas (${esc(e.message)}).</div>`;
+  }
 }
 
 /* =====================================================================
@@ -750,7 +883,7 @@ function renderDiaryEntries(id, type, logs) {
   const form = editable ? `<p class="diary-intro">Registre suas impressões ${isShow?"episódio por episódio":"sobre o filme"}.</p><form class="diary-form" id="diary-form">
     <div class="wide-field"><label for="diary-journey">Experiência</label><select id="diary-journey" required>${journeys.map(j=>`<option value="${esc(j.id)}">${label(j)} — ${statusText[j.status]||"Não definido"}</option>`).join("")}</select>${journeys.length?"":`<small>Inicie uma experiência em “Minhas experiências” para adicionar registros vinculados.</small>`}</div>
     ${isShow?`<div><label for="diary-episode">Episódio</label><input id="diary-episode" type="number" min="0" step="1" value="1" required></div>`:""}
-    <div><label for="diary-date">Data</label>${calendarPickerMarkup({id:"diary-date",value:localDateISO()})}<label style="display:flex;align-items:center;gap:7px;margin-top:8px"><input id="diary-forgot" type="checkbox" style="width:auto"> Esqueci a data</label></div>
+    <div class="diary-date-field"><label for="diary-date">Data</label>${calendarPickerMarkup({id:"diary-date",value:localDateISO()})}<label class="diary-forgot-label"><input id="diary-forgot" type="checkbox"> <span>Esqueci a data</span></label></div>
     <div class="wide-field"><label for="diary-comment">Seu comentário</label><textarea id="diary-comment" maxlength="10000" placeholder="O que achou?" required></textarea></div><button type="submit" ${journeys.length?"":"disabled"}>Adicionar registro</button><span class="diary-status" id="diary-status" role="status"></span></form>` : `<p class="diary-intro">Diário público de impressões.</p>`;
   $("experiences-content").innerHTML = journeyPanel;
   $("diary-content").innerHTML = form + `<h3 style="font:600 1.2rem var(--serif);margin:0 0 12px">Registros <span class="meta">${diaryLogs.length} registro(s)</span></h3><div class="diary-list">${diaryLogs.length?diaryLogs.map(log=>`<article class="diary-entry" data-log-entry="${esc(log.id)}"><div class="diary-entry-head"><strong>${isShow?`Episódio ${Number(log.episode)||"?"}`:"Sessão"}</strong><span class="meta">${diaryDate(log.watchedAt)}</span></div><p>${esc(log.comment)}</p><small>${journeys.some(j=>j.id===log.journeyId)?label(journeys.find(j=>j.id===log.journeyId)):"Registro antigo — sem experiência vinculada"}</small>${editable?`<div class="diary-actions"><button type="button" data-edit-log="${esc(log.id)}">Editar</button><button type="button" data-delete-log="${esc(log.id)}">Excluir</button></div>`:""}</article>`).join(""):`<div class="msg">Ainda não há registros para este título.</div>`}</div>`;
@@ -811,8 +944,8 @@ function renderDiaryEntries(id, type, logs) {
   };
 
   $("diary-form")?.addEventListener("submit",async ev=>{ev.preventDefault();const status=$("diary-status"),episode=isShow?Number($("diary-episode").value):null,watchedAt=$("diary-forgot").checked?"":$("diary-date").value,comment=$("diary-comment").value.trim();if(!comment){status.textContent="Preencha o comentário.";return;}const submit=ev.currentTarget.querySelector('button[type="submit"]');submit.disabled=true;status.textContent="Salvando…";try{const journeyId=$("diary-journey")?.value;if(!journeyId)throw new Error("Inicie uma experiência antes de registrar.");await hubFB.addItemLog({itemId:id,type,journeyId,episode,watchedAt,comment});await loadDiary(id,type);}catch(err){status.textContent="Não foi possível salvar: "+(err.code||err.message);submit.disabled=false;}});
-  $("diary-content").onsubmit=async ev=>{const f=ev.target.closest("[data-save-log]");if(!f)return;ev.preventDefault();const d=new FormData(f),payload={comment:String(d.get("comment")||"").trim(),watchedAt:String(d.get("watchedAt")||""),journeyId:String(d.get("journeyId")||"")};if(isShow){payload.episode=Number(d.get("episode"));if(!Number.isInteger(payload.episode)||payload.episode<0){alert("Número de episódio inválido.");return;}}if(!payload.comment){alert("O comentário não pode ficar vazio.");return;}const b=f.querySelector('button[type="submit"]');b.disabled=true;try{await hubFB.updateItemLog(f.dataset.saveLog,payload);await loadDiary(id,type);}catch(err){b.disabled=false;alert(`Não foi possível editar: ${err.code||err.message}`);}};
-  $("diary-content").onclick=async e=>{const edit=e.target.closest("[data-edit-log]");if(edit){const log=logs.find(x=>String(x.id)===String(edit.dataset.editLog)),article=edit.closest("[data-log-entry]");if(!log||!article)return;article.innerHTML=`<form class="diary-edit-form" data-save-log="${esc(log.id)}"><label>Experiência<select name="journeyId"><option value="">Sem vínculo</option>${journeys.map(j=>`<option value="${esc(j.id)}" ${String(log.journeyId||"")===String(j.id)?"selected":""}>${label(j)} — ${statusText[j.status]||"Não definido"}</option>`).join("")}</select></label>${isShow?`<label>Episódio<input name="episode" type="number" min="0" step="1" value="${Number(log.episode)||1}" required></label>`:""}<label>Data${calendarPickerMarkup({name:"watchedAt",value:log.watchedAt||""})}</label><label>Comentário<textarea name="comment" maxlength="10000" required>${esc(log.comment||"")}</textarea></label><div class="diary-actions"><button type="submit">Salvar alterações</button><button type="button" data-cancel-edit>Cancelar</button></div></form>`;return;}if(e.target.closest("[data-cancel-edit]")){await loadDiary(id,type);return;}const del=e.target.closest("[data-delete-log]");if(del){if(!confirm("Excluir este registro?"))return;try{await hubFB.deleteItemLog(del.dataset.deleteLog);await loadDiary(id,type);}catch(err){alert("Não foi possível excluir: "+(err.code||err.message));}}};
+  $("diary-content").onsubmit=async ev=>{const f=ev.target.closest("[data-save-log]");if(!f)return;ev.preventDefault();const d=new FormData(f),payload={comment:String(d.get("comment")||"").trim(),watchedAt:String(d.get("watchedAt")||"")};if(isShow){payload.episode=Number(d.get("episode"));if(!Number.isInteger(payload.episode)||payload.episode<0){alert("Número de episódio inválido.");return;}}if(!payload.comment){alert("O comentário não pode ficar vazio.");return;}const b=f.querySelector('button[type="submit"]');b.disabled=true;try{await hubFB.updateItemLog(f.dataset.saveLog,payload);await loadDiary(id,type);}catch(err){b.disabled=false;alert(`Não foi possível editar: ${err.code||err.message}`);}};
+  $("diary-content").onclick=async e=>{const edit=e.target.closest("[data-edit-log]");if(edit){const log=logs.find(x=>String(x.id)===String(edit.dataset.editLog)),article=edit.closest("[data-log-entry]");if(!log||!article)return;article.innerHTML=`<form class="diary-edit-form" data-save-log="${esc(log.id)}"><label>Experiência<select name="journeyId"><option value="">Sem vínculo</option>${journeys.map(j=>`<option value="${esc(j.id)}" ${String(log.journeyId||"")===String(j.id)?"selected":""}>${label(j)} — ${statusText[j.status]||"Não definido"}</option>`).join("")}</select></label>${isShow?`<label>Episódio<input name="episode" type="number" min="0" step="1" value="${Number(log.episode)||1}" required></label>`:""}<label>Data${calendarPickerMarkup({name:"watchedAt",value:log.watchedAt||""})}</label><label>Comentário<textarea name="comment" maxlength="10000" required>${esc(log.comment||"")}</textarea></label><div class="diary-actions"><button type="submit">Salvar alterações</button><button type="button" data-cancel-edit>Cancelar</button></div></form>`;return;}if(e.target.closest("[data-cancel-edit]")){await loadDiary(id,type);return;}const del=e.target.closest("[data-delete-log]");if(del){if(!(await showAppConfirm("Este registro será excluído permanentemente do Diário.","Excluir registro?","Excluir",true)))return;del.disabled=true;try{await hubFB.deleteItemLog(del.dataset.deleteLog);await loadDiary(id,type);}catch(err){alert("Não foi possível excluir: "+(err.code||err.message));del.disabled=false;}}};
 }
 
 async function loadDiary(id, type) {
@@ -901,9 +1034,14 @@ document.addEventListener("click", e => {
   const forgot = e.target.closest("#diary-forgot");
   if (forgot) {
     const dateField = $("diary-date");
-    dateField.disabled = forgot.checked;
-    if (forgot.checked) dateField.value = "";
-    else if (!dateField.value) dateField.value = localDateISO();
+    const calendar = dateField?.closest("[data-calendar]");
+    const trigger = calendar?.querySelector("[data-calendar-open]");
+    if (forgot.checked) setCalendarValue(calendar, "");
+    else if (!dateField.value) setCalendarValue(calendar, localDateISO());
+    if (trigger) {
+      trigger.disabled = forgot.checked;
+      trigger.setAttribute("aria-disabled", String(forgot.checked));
+    }
     return;
   }
   const copyBtn = e.target.closest("[data-copy]");
