@@ -468,7 +468,8 @@ async function openItem(id, type, previewData = null) {
       </section>
     </div>`;
 
-  d.showModal();
+  // O diálogo já foi aberto no início de openItem; não chamar showModal()
+  // novamente, pois isso lança InvalidStateError e interrompe a renderização.
   $("btn-remove-catalog")?.addEventListener("click", async () => {
     if (!isOwner()) { alert("Somente o proprietário pode remover títulos da biblioteca."); return; }
     const approved = await showAppConfirm(
