@@ -356,7 +356,9 @@ async function openItem(id, type, previewData = null) {
   activeItem = item;
   const isShow = type === "show";
   // Atualiza metadados antigos com a ficha técnica mais completa do TMDB.
-  if (!item.cast?.length || !item.genres?.length) {
+  // openTmdbPreview já buscou a ficha completa antes de chamar openItem.
+  // Evita repetir a mesma requisição e deixar a janela presa no carregamento.
+  if (!previewData && (!item.cast?.length || !item.genres?.length)) {
     try {
       const mediaType = isShow ? "tv" : "movie";
       const response = await fetch(`${TMDB_WORKER_URL}/api/tmdb/${mediaType}/${encodeURIComponent(id)}`);
@@ -1175,8 +1177,30 @@ document.addEventListener("click",async e=>{
   if(!fbUser||!window.hubFB){alert("Entre com sua conta Google para adicionar títulos.");return;}
   const id=button.dataset.addTmdb, mediaType=button.dataset.mediaType||tmdbSearchResults.find(x=>String(x.id)===id)?.mediaType; if(!mediaType)return;
   button.disabled=true;button.classList.add("is-loading");button.title="Adicionando…";
-  try{const r=await fetch(`${TMDB_WORKER_URL}/api/tmdb/${mediaType}/${id}`);if(!r.ok)throw new Error("Não foi possível carregar os detalhes do título.");const detail=await r.json();const selectedStatus=button.dataset.addStatus || "plantowatch";await hubFB.addCatalogItem({...detail,status:selectedStatus});await loadCatalog();button.classList.remove("is-loading");button.title="Adicionado à biblioteca";button.closest(".tmdb-result,.discover-card")?.classList.add("is-added");}
-  catch(err){console.error(err);button.disabled=false;button.classList.remove("is-loading");button.title="Tentar novamente";alert(`Não foi possível adicionar: ${err.code||err.message}`);}
+  const preservedSearch = {
+    query: $("tmdb-search-input")?.value ?? searchQuery,
+    type: $("tmdb-search-type")?.value ?? searchType,
+    page: searchPage
+  };
+  try {
+    const r=await fetch(`${TMDB_WORKER_URL}/api/tmdb/${mediaType}/${id}`);
+    if(!r.ok)throw new Error("Não foi possível carregar os detalhes do título.");
+    const detail=await r.json();
+    const selectedStatus=button.dataset.addStatus || "plantowatch";
+    await hubFB.addCatalogItem({...detail,status:selectedStatus});
+    await loadCatalog();
+    if (tab === "descobrir" && discoverView === "home" && preservedSearch.query.trim().length >= 2) {
+      $("tmdb-search-input").value = preservedSearch.query;
+      $("tmdb-search-type").value = preservedSearch.type;
+      await runDiscoverSearch(preservedSearch.page);
+    }
+  } catch(err) {
+    console.error(err);
+    button.disabled=false;
+    button.classList.remove("is-loading");
+    button.title="Tentar novamente";
+    alert(`Não foi possível adicionar: ${err.code||err.message}`);
+  }
 });
 
 /* Inicialização */
