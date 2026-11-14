@@ -1878,3 +1878,55 @@ body.discover-mode .top { padding-top:14px; padding-bottom:14px; }
   .poster-quick-actions { right:7px;bottom:8px;gap:6px; }
   .poster-action { width:35px!important;height:35px;min-width:35px; }
 }
+
+
+/* V34 — calendário próprio do Hub */
+.hub-calendar { position:relative; width:100%; min-width:0; }
+.hub-calendar-trigger {
+  width:100%; min-height:43px; display:flex; align-items:center; gap:10px;
+  padding:10px 12px; border:1px solid var(--border,#45403a); border-radius:9px;
+  background:var(--surface-2,#171717); color:var(--text,#f2e7d5);
+  text-align:left; cursor:pointer; font:inherit; transition:border-color .18s,background .18s;
+}
+.hub-calendar-trigger:hover,.hub-calendar-trigger[aria-expanded="true"] {
+  border-color:var(--accent,#c9a875); background:rgba(201,168,117,.07);
+}
+.hub-calendar-trigger>svg { width:18px;height:18px; flex:none; fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;opacity:.85; }
+.hub-calendar-trigger>span:nth-child(2) { flex:1; }
+.hub-calendar-chevron { color:var(--muted,#b6a58d);font-size:18px;line-height:1; }
+.hub-calendar-popover {
+  position:absolute; z-index:80; top:calc(100% + 8px); left:0;
+  width:min(292px,calc(100vw - 56px)); padding:13px;
+  border:1px solid rgba(210,180,133,.3); border-radius:13px;
+  background:#201e1b; color:#f1e4d0;
+  box-shadow:0 16px 42px rgba(0,0,0,.48);
+}
+.hub-calendar-popover[hidden] { display:none!important; }
+.hub-calendar-head { display:grid;grid-template-columns:34px 1fr 34px;align-items:center;gap:8px;margin-bottom:13px; }
+.hub-calendar-head strong { text-align:center;text-transform:capitalize;font:600 .96rem var(--serif,Georgia,serif); }
+.hub-calendar-head button {
+  width:32px;height:32px;border:1px solid #494137;border-radius:8px;
+  color:#e9c895;background:#2b2823;font-size:22px;line-height:1;cursor:pointer;
+}
+.hub-calendar-head button:hover { background:#40372b;border-color:#c9a875; }
+.hub-calendar-week,.hub-calendar-grid { display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px;text-align:center; }
+.hub-calendar-week { margin-bottom:6px;color:#b8a991;font-size:.7rem;font-weight:700; }
+.hub-calendar-week span { padding:4px 0; }
+.hub-calendar-day,.hub-calendar-empty { min-width:0;aspect-ratio:1; }
+.hub-calendar-day {
+  border:1px solid transparent;border-radius:8px;background:transparent;
+  color:#eee2d0;font:500 .82rem inherit;cursor:pointer;
+}
+.hub-calendar-day:hover { background:#393126;border-color:#8e7653; }
+.hub-calendar-day.is-today { border-color:#a98a5c;color:#f0c98d; }
+.hub-calendar-day.is-selected { background:#d3b17d;color:#211a11;border-color:#e6c997;font-weight:800; }
+.hub-calendar-foot { display:flex;justify-content:space-between;margin-top:11px;padding-top:10px;border-top:1px solid #403a32; }
+.hub-calendar-foot button { border:0;background:transparent;color:#e3bd83;font:600 .78rem inherit;cursor:pointer;padding:5px 7px;border-radius:6px; }
+.hub-calendar-foot button:hover { background:rgba(211,177,125,.12); }
+@media(max-width:520px) {
+  .hub-calendar-popover { width:min(286px,calc(100vw - 48px)); }
+}
+
+/* V35 — ação destrutiva na confirmação centralizada */
+.app-confirm-actions .app-confirm-ok.is-danger { color:#fff1ed; background:#a9433d; border-color:#c45c53; }
+.app-confirm-actions .app-confirm-ok.is-danger:hover { background:#bd5149; }

@@ -5,7 +5,7 @@
    CONTROLE DE VERSÃO:
    Sempre que modificar este arquivo incremente HUB_VERSION em +1.
    ===================================================================== */
-const HUB_VERSION = 25;
+const HUB_VERSION = 27;
 window.HUB_VERSION = HUB_VERSION;
 document.getElementById("project-version").textContent = `v${HUB_VERSION}`;
 
@@ -426,7 +426,13 @@ async function openItem(id, type, previewData = null) {
   d.showModal();
   $("btn-remove-catalog")?.addEventListener("click", async () => {
     if (!isOwner()) { alert("Somente o proprietário pode remover títulos da biblioteca."); return; }
-    if (!confirm(`Remover “${item.title}” da sua biblioteca? Os registros do diário serão preservados.`)) return;
+    const approved = await showAppConfirm(
+      `Remover “${item.title}” da sua biblioteca? Os registros do Diário serão preservados.`,
+      "Remover da biblioteca?",
+      "Remover",
+      true
+    );
+    if (!approved) return;
     try { await hubFB.removeCatalogItem(id,type); await loadCatalog(); d.close(); }
     catch(err) { alert(`Não foi possível remover: ${err.code || err.message}`); }
   });
@@ -676,6 +682,70 @@ function localDateISO() {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
 }
 
+
+function calendarPickerMarkup({name="",id="",value="",placeholder="Selecionar data"}={}) {
+  const field = name ? `name="${esc(name)}"` : `id="${esc(id)}"`;
+  const shown = value ? diaryDate(value) : placeholder;
+  return `<div class="hub-calendar" data-calendar>
+    <input type="hidden" ${field} value="${esc(value)}">
+    <button type="button" class="hub-calendar-trigger" data-calendar-open aria-haspopup="dialog" aria-expanded="false">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15.5" rx="2"/><path d="M7.5 3.5v3M16.5 3.5v3M3.5 9.5h17"/></svg>
+      <span>${esc(shown)}</span><span class="hub-calendar-chevron">⌄</span>
+    </button><div class="hub-calendar-popover" data-calendar-popover hidden></div>
+  </div>`;
+}
+function calendarMonthMarkup(root, monthDate) {
+  const year=monthDate.getFullYear(), month=monthDate.getMonth();
+  const first=new Date(year,month,1), offset=first.getDay(), days=new Date(year,month+1,0).getDate();
+  const input=root.querySelector('input[type="hidden"]'), selected=input?.value||"";
+  const today=localDateISO();
+  const cells=[];
+  for(let i=0;i<offset;i++) cells.push('<span class="hub-calendar-empty"></span>');
+  for(let day=1;day<=days;day++){
+    const iso=`${year}-${String(month+1).padStart(2,"0")}-${String(day).padStart(2,"0")}`;
+    cells.push(`<button type="button" class="hub-calendar-day ${iso===selected?"is-selected":""} ${iso===today?"is-today":""}" data-calendar-day="${iso}">${day}</button>`);
+  }
+  return `<div class="hub-calendar-head"><button type="button" data-calendar-prev aria-label="Mês anterior">‹</button><strong>${monthDate.toLocaleDateString("pt-BR",{month:"long",year:"numeric"})}</strong><button type="button" data-calendar-next aria-label="Próximo mês">›</button></div>
+    <div class="hub-calendar-week">${["D","S","T","Q","Q","S","S"].map(x=>`<span>${x}</span>`).join("")}</div>
+    <div class="hub-calendar-grid">${cells.join("")}</div>
+    <div class="hub-calendar-foot"><button type="button" data-calendar-clear>Limpar</button><button type="button" data-calendar-today>Hoje</button></div>`;
+}
+function setCalendarValue(root,value) {
+  const input=root.querySelector('input[type="hidden"]'), label=root.querySelector('.hub-calendar-trigger span');
+  if(!input||!label)return;
+  input.value=value;
+  label.textContent=value?diaryDate(value):"Selecionar data";
+  input.dispatchEvent(new Event("change",{bubbles:true}));
+  root.querySelector('[data-calendar-popover]').hidden=true;
+  root.querySelector('[data-calendar-open]').setAttribute("aria-expanded","false");
+}
+document.addEventListener("click",e=>{
+  const open=e.target.closest("[data-calendar-open]");
+  if(open){
+    const root=open.closest("[data-calendar]"), pop=root.querySelector("[data-calendar-popover]");
+    document.querySelectorAll("[data-calendar-popover]").forEach(p=>{if(p!==pop)p.hidden=true;});
+    const current=root.querySelector('input[type="hidden"]').value;
+    const d=current?new Date(current+"T12:00:00"):new Date();
+    pop.dataset.month=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-01`;
+    pop.innerHTML=calendarMonthMarkup(root,d);pop.hidden=false;open.setAttribute("aria-expanded","true");return;
+  }
+  const pop=e.target.closest("[data-calendar-popover]");
+  if(pop){
+    const root=pop.closest("[data-calendar]"), base=new Date((pop.dataset.month||localDateISO().slice(0,7)+"-01")+"T12:00:00");
+    if(e.target.closest("[data-calendar-prev]")||e.target.closest("[data-calendar-next]")){
+      base.setMonth(base.getMonth()+(e.target.closest("[data-calendar-prev]")?-1:1));
+      pop.dataset.month=`${base.getFullYear()}-${String(base.getMonth()+1).padStart(2,"0")}-01`;
+      pop.innerHTML=calendarMonthMarkup(root,base);return;
+    }
+    const day=e.target.closest("[data-calendar-day]");
+    if(day){setCalendarValue(root,day.dataset.calendarDay);return;}
+    if(e.target.closest("[data-calendar-clear]")){setCalendarValue(root,"");return;}
+    if(e.target.closest("[data-calendar-today]")){setCalendarValue(root,localDateISO());return;}
+    return;
+  }
+  document.querySelectorAll("[data-calendar-popover]").forEach(p=>{p.hidden=true;p.closest("[data-calendar]")?.querySelector("[data-calendar-open]")?.setAttribute("aria-expanded","false");});
+});
+
 function diaryDate(value) {
   if (!value) return "Data não informada";
   const d = new Date(value + "T12:00:00");
@@ -683,7 +753,7 @@ function diaryDate(value) {
 }
 
 
-function showAppConfirm(message, title = "Confirmar ação") {
+function showAppConfirm(message, title = "Confirmar ação", confirmLabel = "Confirmar", danger = false) {
   return new Promise(resolve => {
     let dialog = document.getElementById("app-confirm-dialog");
     if (!dialog) {
@@ -695,6 +765,9 @@ function showAppConfirm(message, title = "Confirmar ação") {
     }
     dialog.querySelector(".app-confirm-title").textContent = title;
     dialog.querySelector(".app-confirm-message").textContent = message;
+    const confirmButton = dialog.querySelector(".app-confirm-ok");
+    confirmButton.textContent = confirmLabel;
+    confirmButton.classList.toggle("is-danger", danger);
     const done = value => { dialog.removeEventListener("close", onClose); resolve(value); };
     const onClose = () => done(dialog.returnValue === "confirm");
     dialog.addEventListener("close", onClose, { once: true });
@@ -736,7 +809,7 @@ function renderDiaryEntries(id, type, logs) {
           <div class="journey-edit-grid">
             <label>Status<select name="status"><option value="in_progress" ${j.status==="in_progress"?"selected":""}>Em andamento</option><option value="paused" ${j.status==="paused"?"selected":""}>Pausada</option><option value="completed" ${j.status==="completed"?"selected":""}>Concluída</option><option value="abandoned" ${j.status==="abandoned"?"selected":""}>Abandonada</option></select></label>
             <label>Nota individual (0–100)<div class="custom-number"><input name="score" type="number" min="0" max="100" step="1" value="${Number(j.score)>0?Number(j.score):""}" placeholder="Não avaliada"><span class="number-stepper"><button type="button" data-number-step="-1" aria-label="Diminuir nota">−</button><button type="button" data-number-step="1" aria-label="Aumentar nota">+</button></span></div></label>
-            <label>Data de início<div class="custom-date"><input name="startedAt" type="date" value="${esc(j.startedAt||"")}"></div><small>Deixe em branco se não souber.</small></label><label>Data de conclusão<div class="custom-date"><input name="endedAt" type="date" value="${esc(j.endedAt||"")}"></div><small>Informe quando terminou; pode ficar em branco.</small></label>
+            <label>Data de início${calendarPickerMarkup({name:"startedAt",value:j.startedAt||""})}<small>Deixe em branco se não souber.</small></label><label>Data de conclusão${calendarPickerMarkup({name:"endedAt",value:j.endedAt||""})}<small>Informe quando terminou; pode ficar em branco.</small></label>
             ${isShow?`<label>Temporada atual<div class="custom-number"><input name="progressSeason" type="number" min="0" step="1" value="${j.progressSeason??""}"><span class="number-stepper"><button type="button" data-number-step="-1" aria-label="Diminuir temporada">−</button><button type="button" data-number-step="1" aria-label="Aumentar temporada">+</button></span></div></label><label>Episódio atual<div class="custom-number"><input name="progressEpisode" type="number" min="0" step="1" value="${j.progressEpisode??""}"><span class="number-stepper"><button type="button" data-number-step="-1" aria-label="Diminuir episódio">−</button><button type="button" data-number-step="1" aria-label="Aumentar episódio">+</button></span></div></label>`:""}
             <label class="journey-edit-wide">Observações desta experiência<textarea name="notes" rows="4" maxlength="10000" placeholder="Anotações sobre esta jornada…">${esc(j.notes||"")}</textarea></label>
           </div><div class="journey-edit-footer"><span class="diary-status" role="status"></span><button type="button" data-cancel-journey="${esc(j.id)}">Cancelar</button><button type="submit" class="journey-save-btn">Salvar alterações</button></div>
@@ -746,7 +819,7 @@ function renderDiaryEntries(id, type, logs) {
   const form = editable ? `<p class="diary-intro">Registre suas impressões ${isShow?"episódio por episódio":"sobre o filme"}.</p><form class="diary-form" id="diary-form">
     <div class="wide-field"><label for="diary-journey">Experiência</label><select id="diary-journey" required>${journeys.map(j=>`<option value="${esc(j.id)}">${label(j)} — ${statusText[j.status]||"Não definido"}</option>`).join("")}</select>${journeys.length?"":`<small>Inicie uma experiência em “Minhas experiências” para adicionar registros vinculados.</small>`}</div>
     ${isShow?`<div><label for="diary-episode">Episódio</label><input id="diary-episode" type="number" min="0" step="1" value="1" required></div>`:""}
-    <div><label for="diary-date">Data</label><input id="diary-date" type="date" value="${localDateISO()}"><label style="display:flex;align-items:center;gap:7px;margin-top:8px"><input id="diary-forgot" type="checkbox" style="width:auto"> Esqueci a data</label></div>
+    <div><label for="diary-date">Data</label>${calendarPickerMarkup({id:"diary-date",value:localDateISO()})}<label style="display:flex;align-items:center;gap:7px;margin-top:8px"><input id="diary-forgot" type="checkbox" style="width:auto"> Esqueci a data</label></div>
     <div class="wide-field"><label for="diary-comment">Seu comentário</label><textarea id="diary-comment" maxlength="10000" placeholder="O que achou?" required></textarea></div><button type="submit" ${active.length?"":"disabled"}>Adicionar registro</button><span class="diary-status" id="diary-status" role="status"></span></form>` : `<p class="diary-intro">Diário público de impressões.</p>`;
   $("experiences-content").innerHTML = journeyPanel;
   $("diary-content").innerHTML = form + `<h3 style="font:600 1.2rem var(--serif);margin:0 0 12px">Registros <span class="meta">${diaryLogs.length} registro(s)</span></h3><div class="diary-list">${diaryLogs.length?diaryLogs.map(log=>`<article class="diary-entry" data-log-entry="${esc(log.id)}"><div class="diary-entry-head"><strong>${isShow?`Episódio ${Number(log.episode)||"?"}`:"Sessão"}</strong><span class="meta">${diaryDate(log.watchedAt)}</span></div><p>${esc(log.comment)}</p><small>${journeys.some(j=>j.id===log.journeyId)?label(journeys.find(j=>j.id===log.journeyId)):"Registro antigo — sem experiência vinculada"}</small>${editable?`<div class="diary-actions"><button type="button" data-edit-log="${esc(log.id)}">Editar</button><button type="button" data-delete-log="${esc(log.id)}">Excluir</button></div>`:""}</article>`).join(""):`<div class="msg">Ainda não há registros para este título.</div>`}</div>`;
@@ -808,7 +881,7 @@ function renderDiaryEntries(id, type, logs) {
 
   $("diary-form")?.addEventListener("submit",async ev=>{ev.preventDefault();const status=$("diary-status"),episode=isShow?Number($("diary-episode").value):null,watchedAt=$("diary-forgot").checked?"":$("diary-date").value,comment=$("diary-comment").value.trim();if(!comment){status.textContent="Preencha o comentário.";return;}const submit=ev.currentTarget.querySelector('button[type="submit"]');submit.disabled=true;status.textContent="Salvando…";try{const journeyId=$("diary-journey")?.value;if(!journeyId)throw new Error("Inicie uma experiência antes de registrar.");await hubFB.addItemLog({itemId:id,type,journeyId,episode,watchedAt,comment});await loadDiary(id,type);}catch(err){status.textContent="Não foi possível salvar: "+(err.code||err.message);submit.disabled=false;}});
   $("diary-content").onsubmit=async ev=>{const f=ev.target.closest("[data-save-log]");if(!f)return;ev.preventDefault();const d=new FormData(f),payload={comment:String(d.get("comment")||"").trim(),watchedAt:String(d.get("watchedAt")||"")};if(isShow){payload.episode=Number(d.get("episode"));if(!Number.isInteger(payload.episode)||payload.episode<0){alert("Número de episódio inválido.");return;}}if(!payload.comment){alert("O comentário não pode ficar vazio.");return;}const b=f.querySelector('button[type="submit"]');b.disabled=true;try{await hubFB.updateItemLog(f.dataset.saveLog,payload);await loadDiary(id,type);}catch(err){b.disabled=false;alert(`Não foi possível editar: ${err.code||err.message}`);}};
-  $("diary-content").onclick=async e=>{const edit=e.target.closest("[data-edit-log]");if(edit){const log=logs.find(x=>String(x.id)===String(edit.dataset.editLog)),article=edit.closest("[data-log-entry]");if(!log||!article)return;article.innerHTML=`<form class="diary-edit-form" data-save-log="${esc(log.id)}">${isShow?`<label>Episódio<input name="episode" type="number" min="0" step="1" value="${Number(log.episode)||1}" required></label>`:""}<label>Data<input name="watchedAt" type="date" value="${esc(log.watchedAt||"")}"></label><label>Comentário<textarea name="comment" maxlength="10000" required>${esc(log.comment||"")}</textarea></label><div class="diary-actions"><button type="submit">Salvar alterações</button><button type="button" data-cancel-edit>Cancelar</button></div></form>`;return;}if(e.target.closest("[data-cancel-edit]")){await loadDiary(id,type);return;}const del=e.target.closest("[data-delete-log]");if(del){if(!confirm("Excluir este registro?"))return;try{await hubFB.deleteItemLog(del.dataset.deleteLog);await loadDiary(id,type);}catch(err){alert("Não foi possível excluir: "+(err.code||err.message));}}};
+  $("diary-content").onclick=async e=>{const edit=e.target.closest("[data-edit-log]");if(edit){const log=logs.find(x=>String(x.id)===String(edit.dataset.editLog)),article=edit.closest("[data-log-entry]");if(!log||!article)return;article.innerHTML=`<form class="diary-edit-form" data-save-log="${esc(log.id)}">${isShow?`<label>Episódio<input name="episode" type="number" min="0" step="1" value="${Number(log.episode)||1}" required></label>`:""}<label>Data${calendarPickerMarkup({name:"watchedAt",value:log.watchedAt||""})}</label><label>Comentário<textarea name="comment" maxlength="10000" required>${esc(log.comment||"")}</textarea></label><div class="diary-actions"><button type="submit">Salvar alterações</button><button type="button" data-cancel-edit>Cancelar</button></div></form>`;return;}if(e.target.closest("[data-cancel-edit]")){await loadDiary(id,type);return;}const del=e.target.closest("[data-delete-log]");if(del){if(!confirm("Excluir este registro?"))return;try{await hubFB.deleteItemLog(del.dataset.deleteLog);await loadDiary(id,type);}catch(err){alert("Não foi possível excluir: "+(err.code||err.message));}}};
 }
 
 async function loadDiary(id, type) {
