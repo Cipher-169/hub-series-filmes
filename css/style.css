@@ -2574,3 +2574,32 @@ body.discover-mode .top { padding-top:14px; padding-bottom:14px; }
 .stats-time-breakdown strong{font:600 1.45rem var(--serif);color:var(--sun)}
 .stats-time-breakdown small{font-size:.74rem;color:var(--muted)}
 @media(max-width:560px){.stats-time-hero{padding:18px}.stats-time-icon{width:46px;height:46px;flex-basis:46px;font-size:1.6rem}}
+
+
+/* ---------- Identidade NEXUS ---------- */
+.brand {
+  gap: 9px;
+  flex-wrap: nowrap;
+}
+.brand-name {
+  color: #f1d5a4;
+  font: 700 1.28rem var(--sans);
+  letter-spacing: .16em;
+}
+.brand-divider {
+  color: rgba(241,200,121,.45);
+  font: 400 1rem var(--sans);
+}
+.brand-hub {
+  color: rgba(239,229,211,.78);
+  font: 600 .67rem var(--sans);
+  letter-spacing: .13em;
+}
+.brand .project-version {
+  margin-left: 2px;
+}
+@media (max-width: 560px) {
+  .brand { gap: 6px; }
+  .brand-name { font-size: 1.08rem; }
+  .brand-hub { font-size: .57rem; letter-spacing: .08em; }
+}
