@@ -597,7 +597,10 @@ async function loadSeriesSeasons(showId, savedNote, selectedJourneyId = "") {
 
     const regularSeasons = seasonsData.filter(s => s.number > 0);
     const seasonsList = regularSeasons.length ? regularSeasons : seasonsData;
-    const journeys = fbUser && hubFB?.getItemJourneys ? await hubFB.getItemJourneys(showId, "show") : [];
+    // O progresso das experiências é público para leitura; autenticação é exigida
+    // somente para editar. Visitantes também precisam carregar as jornadas para
+    // enxergar os episódios já marcados pelo proprietário.
+    const journeys = hubFB?.getItemJourneys ? await hubFB.getItemJourneys(showId, "show") : [];
     if (requestToken !== seriesSeasonsRequestToken ||
         !activeItem || String(activeItem.id) !== String(showId) || activeItem.type !== "show" ||
         !$("dlg")?.open) return;
@@ -625,13 +628,14 @@ async function loadSeriesSeasons(showId, savedNote, selectedJourneyId = "") {
     // Compatibilidade: registros antigos salvos na obra continuam visíveis caso não haja jornada.
     const savedSeasons = normalizeSeasonMap(selectedJourney?.seasons ?? (journeys.length ? {} : savedNote?.seasons));
     const saveSeasonData = async () => {
+      if (!isOwner()) throw new Error("Somente o proprietário pode editar temporadas e episódios.");
       if (selectedJourney) await hubFB.updateJourney(selectedJourney.id, { seasons: savedSeasons });
-      else if (fbUser) await hubFB.saveItemNote(showId, "show", { seasons: savedSeasons });
+      else await hubFB.saveItemNote(showId, "show", { seasons: savedSeasons });
     };
 
     container.innerHTML = `
       <h3 style="font:600 1.25rem var(--serif);margin:20px 0 10px">Temporadas &amp; Episódios</h3>
-      ${journeys.length ? `<div class="season-journey-picker"><label for="season-journey-select">Progresso desta experiência</label><select id="season-journey-select">${journeys.map((j,i)=>`<option value="${esc(j.id)}" ${selectedJourney?.id===j.id?"selected":""}>Experiência ${String(journeys.length-i).padStart(2,"0")} — ${{in_progress:"Em andamento",paused:"Pausada",completed:"Concluída",abandoned:"Abandonada"}[j.status]||"Não definido"}</option>`).join("")}</select></div>` : `<p class="meta">Inicie uma experiência para acompanhar temporadas separadamente.</p>`}
+      ${journeys.length ? `<div class="season-journey-picker"><label for="season-journey-select">Progresso desta experiência</label><select id="season-journey-select">${journeys.map((j,i)=>`<option value="${esc(j.id)}" ${selectedJourney?.id===j.id?"selected":""}>Experiência ${String(journeys.length-i).padStart(2,"0")} — ${{in_progress:"Em andamento",paused:"Pausada",completed:"Concluída",abandoned:"Abandonada"}[j.status]||"Não definido"}</option>`).join("")}</select></div>` : `<p class="meta">${isOwner() ? "Inicie uma experiência para acompanhar temporadas separadamente." : "Ainda não há experiências registradas para esta obra."}</p>`}
       <div class="seasons-accordion">
         ${seasonsList.map(season => {
           const sn = String(season.number), data = savedSeasons[sn] || {};
@@ -645,14 +649,14 @@ async function loadSeriesSeasons(showId, savedNote, selectedJourneyId = "") {
               <span class="season-header-meta"><span>${count} / ${total} eps (${pct}%)</span><span class="season-progress-bar"><i style="width:${pct}%"></i></span><span class="season-chevron" aria-hidden="true">⌄</span></span>
             </button>
             <div class="season-content" id="season-content-${sn}" hidden>
-              <div class="season-rating-grid">
+              ${isOwner() ? `<div class="season-rating-grid">
                 <label>Nota da temporada (0–100)<input class="season-score-input" type="number" min="0" max="100" step="1" value="${scoreValue}" placeholder="Não avaliada"></label>
                 <label>Data de início${calendarPickerMarkup({name:"seasonStartedAt",value:data.startedAt||"",placeholder:"Selecionar data"})}</label>
                 <label>Data de conclusão${calendarPickerMarkup({name:"seasonEndedAt",value:data.endedAt||"",placeholder:"Selecionar data"})}</label>
-                <div class="season-save-row"><button type="button" class="btn-save-season-data" data-season="${sn}">Salvar temporada</button><span class="meta season-save-status" aria-live="polite"></span>${fbUser ? `<button type="button" class="btn-toggle-season-watched" data-season="${sn}">${finished?"Desmarcar temporada":"Marcar temporada como assistida"}</button>` : ""}</div>
-              </div>
+                <div class="season-save-row"><button type="button" class="btn-save-season-data" data-season="${sn}">Salvar temporada</button><span class="meta season-save-status" aria-live="polite"></span><button type="button" class="btn-toggle-season-watched" data-season="${sn}">${finished?"Desmarcar temporada":"Marcar temporada como assistida"}</button></div>
+              </div>` : `<div class="season-readonly-meta">${scoreValue !== "" ? `Nota: ${scoreValue}/100` : "Sem avaliação"}${data.startedAt ? ` · Início: ${esc(data.startedAt)}` : ""}${data.endedAt ? ` · Conclusão: ${esc(data.endedAt)}` : ""}</div>`}
               ${finished ? `<small class="season-finished-note">Temporada concluída nesta experiência.</small>` : ""}
-              <div class="episodes-grid">${episodes.map(ep=>`<button type="button" class="ep-btn ${watched.has(ep.number)?"watched":""}" ${!fbUser?"disabled":""} data-season="${sn}" data-ep="${ep.number}" title="Episódio ${ep.number}">E${ep.number}</button>`).join("")}</div>
+              <div class="episodes-grid">${episodes.map(ep=>`<button type="button" class="ep-btn ${watched.has(ep.number)?"watched":""}" ${!isOwner()?"disabled":""} data-season="${sn}" data-ep="${ep.number}" title="Episódio ${ep.number}">E${ep.number}</button>`).join("")}</div>
             </div>
           </section>`;
         }).join("")}

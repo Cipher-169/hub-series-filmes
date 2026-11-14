@@ -2267,3 +2267,49 @@ body.discover-mode .top { padding-top:14px; padding-bottom:14px; }
   width:15px;
   height:15px;
 }
+
+
+/* V49 — barras de rolagem personalizadas com a identidade visual do Hub */
+:root {
+  scrollbar-color: rgba(208, 173, 120, .62) rgba(24, 22, 19, .92);
+  scrollbar-width: thin;
+}
+
+* {
+  scrollbar-color: rgba(208, 173, 120, .62) rgba(24, 22, 19, .92);
+  scrollbar-width: thin;
+}
+
+/* Chromium, Edge, Opera e Safari */
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-track {
+  background: rgba(24, 22, 19, .92);
+  border-radius: 999px;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: linear-gradient(
+    180deg,
+    rgba(218, 187, 139, .72),
+    rgba(174, 137, 87, .68)
+  );
+  border: 2px solid rgba(24, 22, 19, .92);
+  border-radius: 999px;
+  min-height: 34px;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(
+    180deg,
+    rgba(239, 211, 166, .92),
+    rgba(199, 158, 102, .9)
+  );
+}
+
+*::-webkit-scrollbar-corner {
+  background: rgba(24, 22, 19, .92);
+}
