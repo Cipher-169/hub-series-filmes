@@ -5,7 +5,7 @@
    CONTROLE DE VERSÃO:
    Sempre que modificar este arquivo incremente HUB_VERSION em +1.
    ===================================================================== */
-const HUB_VERSION = 23;
+const HUB_VERSION = 24;
 window.HUB_VERSION = HUB_VERSION;
 document.getElementById("project-version").textContent = `v${HUB_VERSION}`;
 
@@ -180,9 +180,28 @@ async function renderDiscover() {
   } catch(e){if(token===discoverRenderToken){const target=$("discover-results");if(target)target.innerHTML=`<div class="msg err">Não foi possível carregar esta coleção: ${esc(e.message)}.</div><button type="button" class="discover-retry" data-discover-retry>Tentar novamente</button>`;}}
 }
 function discoverCard(item) {
-  const type=item.mediaType==="tv"?"show":"movie", exists=[...movies,...shows].some(x=>x.type===type&&String(x.id)===String(item.id));
+  const type=item.mediaType==="tv"?"show":"movie";
+  const existing=[...movies,...shows].find(x=>x.type===type&&String(x.id)===String(item.id));
+  const disabled=!fbUser;
   const poster=item.posterUrl?`<img src="${esc(item.posterUrl)}" alt="Pôster de ${esc(item.title)}" loading="lazy">`:`<div class="discover-no-poster">Sem pôster</div>`;
-  return `<article class="discover-card" tabindex="0" aria-label="Ver detalhes de ${esc(item.title)}" data-preview-id="${esc(item.id)}" data-preview-type="${item.mediaType}">${poster}<div class="discover-card-info"><strong>${esc(item.title)}</strong><span>${item.year||"Ano desconhecido"} · ${type==="show"?"Série":"Filme"}</span><span class="discover-rating">★ ${Number(item.voteAverage||0).toFixed(1)}</span><div class="discover-add-controls"><select aria-label="Status ao adicionar" data-add-status ${exists||!fbUser?"disabled":""}><option value="plantowatch">Quero assistir</option><option value="watching">Assistindo</option><option value="completed">Concluído</option><option value="paused">Pausado</option><option value="dropped">Abandonado</option></select><button type="button" data-add-tmdb="${esc(item.id)}" data-media-type="${item.mediaType}" ${exists||!fbUser?"disabled":""}>${exists?"Na biblioteca":fbUser?"Adicionar":"Entre para adicionar"}</button></div></div></article>`;
+  const actions=existing?`
+    <div class="poster-quick-actions" aria-label="Editar ${esc(item.title)}">
+      <button type="button" class="poster-action" data-edit-catalog="${esc(item.id)}" data-edit-type="${type}" title="Editar na biblioteca" aria-label="Editar na biblioteca">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14 5 5 5M4 20l4.2-.9L19 8.3a2.1 2.1 0 0 0-3-3L5.2 16.1 4 20Z"/></svg>
+      </button>
+    </div>`:`
+    <div class="poster-quick-actions" aria-label="Adicionar ${esc(item.title)}">
+      <button type="button" class="poster-action" data-add-tmdb="${esc(item.id)}" data-media-type="${item.mediaType}" data-add-status="watching" title="Marcar como assistindo" aria-label="Marcar como assistindo" ${disabled?"disabled":""}>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.8v12.4L18 12 8 5.8Z"/></svg>
+      </button>
+      <button type="button" class="poster-action" data-add-tmdb="${esc(item.id)}" data-media-type="${item.mediaType}" data-add-status="plantowatch" title="Adicionar a Quero assistir" aria-label="Adicionar a Quero assistir" ${disabled?"disabled":""}>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 4.8h12a1 1 0 0 1 1 1v14l-7-4-7 4v-14a1 1 0 0 1 1-1Z"/></svg>
+      </button>
+      <button type="button" class="poster-action poster-action-manual" data-manual-add="${esc(item.id)}" data-media-type="${item.mediaType}" title="Adicionar manualmente" aria-label="Adicionar manualmente" ${disabled?"disabled":""}>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+      </button>
+    </div>`;
+  return `<article class="discover-card" tabindex="0" aria-label="Ver detalhes de ${esc(item.title)}" data-preview-id="${esc(item.id)}" data-preview-type="${item.mediaType}"><div class="discover-poster-wrap">${poster}${actions}${existing?'<span class="poster-in-library">Na biblioteca</span>':""}</div><div class="discover-card-info"><strong>${esc(item.title)}</strong><span>${item.year||"Ano desconhecido"} · ${type==="show"?"Série":"Filme"}</span><span class="discover-rating">★ ${Number(item.voteAverage||0).toFixed(1)}</span></div></article>`;
 }
 function renderSearchPagination(totalPages=1) {
   const holder=$("search-pagination");
@@ -934,13 +953,17 @@ document.addEventListener("click",async e=>{
   const page=e.target.closest("[data-discover-page]");if(page){discoverPage=Math.max(1,discoverPage+(page.dataset.discoverPage==="next"?1:-1));renderDiscover();return;}
   const searchPageButton=e.target.closest("[data-search-page]");if(searchPageButton){runDiscoverSearch(Math.max(1,searchPage+(searchPageButton.dataset.searchPage==="next"?1:-1)));return;}
   if(e.target.closest("[data-discover-retry]")){discoverCache.delete(`${discoverView}:${discoverPage}`);renderDiscover();return;}
-  const preview=e.target.closest("[data-preview-id]");if(preview&&!e.target.closest("[data-add-tmdb]")){openTmdbPreview(preview.dataset.previewId,preview.dataset.previewType);return;}
+  const preview=e.target.closest("[data-preview-id]");if(preview&&!e.target.closest("[data-add-tmdb],[data-manual-add],[data-edit-catalog]")){openTmdbPreview(preview.dataset.previewId,preview.dataset.previewType);return;}
+  const editButton=e.target.closest("[data-edit-catalog]");
+  if(editButton){openItem(editButton.dataset.editCatalog,editButton.dataset.editType);return;}
+  const manualButton=e.target.closest("[data-manual-add]");
+  if(manualButton){if(!fbUser||!window.hubFB){alert("Entre com sua conta Google para adicionar títulos.");return;}openTmdbPreview(manualButton.dataset.manualAdd,manualButton.dataset.mediaType);return;}
   const button=e.target.closest("[data-add-tmdb]"); if(!button)return;
   if(!fbUser||!window.hubFB){alert("Entre com sua conta Google para adicionar títulos.");return;}
   const id=button.dataset.addTmdb, mediaType=button.dataset.mediaType||tmdbSearchResults.find(x=>String(x.id)===id)?.mediaType; if(!mediaType)return;
-  button.disabled=true;button.textContent="Adicionando…";
-  try{const r=await fetch(`${TMDB_WORKER_URL}/api/tmdb/${mediaType}/${id}`);if(!r.ok)throw new Error("Não foi possível carregar os detalhes do título.");const detail=await r.json();const selectedStatus=button.closest(".discover-card")?.querySelector("[data-add-status]")?.value || "plantowatch";await hubFB.addCatalogItem({...detail,status:selectedStatus});await loadCatalog();button.textContent="Adicionado";button.closest(".tmdb-result,.discover-card")?.classList.add("is-added");}
-  catch(err){console.error(err);button.disabled=false;button.textContent="Tentar novamente";alert(`Não foi possível adicionar: ${err.code||err.message}`);}
+  button.disabled=true;button.classList.add("is-loading");button.title="Adicionando…";
+  try{const r=await fetch(`${TMDB_WORKER_URL}/api/tmdb/${mediaType}/${id}`);if(!r.ok)throw new Error("Não foi possível carregar os detalhes do título.");const detail=await r.json();const selectedStatus=button.dataset.addStatus || "plantowatch";await hubFB.addCatalogItem({...detail,status:selectedStatus});await loadCatalog();button.classList.remove("is-loading");button.title="Adicionado à biblioteca";button.closest(".tmdb-result,.discover-card")?.classList.add("is-added");}
+  catch(err){console.error(err);button.disabled=false;button.classList.remove("is-loading");button.title="Tentar novamente";alert(`Não foi possível adicionar: ${err.code||err.message}`);}
 });
 
 /* Inicialização */
