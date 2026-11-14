@@ -277,7 +277,7 @@ window.hubFB = {
     const journeyType = !latestJourney ? "first" : latestJourney.status === "completed" ? "rewatch" : "retry";
     const payload = {
       itemId: String(itemId), type, recordType: "journey", journeyType,
-      status: "in_progress", startedAt: new Date().toISOString().slice(0,10), endedAt: "",
+      status: "in_progress", startedAt: new Date().toISOString().slice(0,10), startedAtSource: "automatic", endedAt: "", endedAtSource: "unknown",
       score: 0, progressSeason: "", progressEpisode: "", notes: "",
       createdAt: serverTimestamp(),
     };
@@ -343,20 +343,48 @@ window.hubFB = {
     for (const key of ["status", "startedAt", "endedAt", "notes"]) {
       if (Object.prototype.hasOwnProperty.call(data, key)) payload[key] = String(data[key] ?? "");
     }
+    // Proveniência das datas: alterações feitas no calendário são confirmadas;
+    // datas preenchidas por ações automáticas recebem origem "automatic".
+    for (const key of ["startedAtSource", "endedAtSource"]) {
+      if (Object.prototype.hasOwnProperty.call(data, key)) payload[key] = String(data[key] || "unknown");
+    }
+    if (Object.prototype.hasOwnProperty.call(data, "startedAt") && !Object.prototype.hasOwnProperty.call(data, "startedAtSource")) {
+      payload.startedAtSource = String(data.startedAt || "") === String(old.startedAt || "")
+        ? (old.startedAtSource || "legacy") : (data.startedAt ? "user" : "unknown");
+    }
+    if (Object.prototype.hasOwnProperty.call(data, "endedAt") && !Object.prototype.hasOwnProperty.call(data, "endedAtSource")) {
+      payload.endedAtSource = String(data.endedAt || "") === String(old.endedAt || "")
+        ? (old.endedAtSource || (old.endedAtAuto ? "automatic" : "legacy")) : (data.endedAt ? "user" : "unknown");
+    }
     // `seasons` é um mapa estruturado (temporada -> episódios, nota e datas).
     // Convertê-lo para String destrói os dados como "[object Object]" e impede
     // que o progresso seja recuperado ao reabrir a série.
     if (Object.prototype.hasOwnProperty.call(data, "seasons")) {
-      if (!data.seasons || typeof data.seasons !== "object" || Array.isArray(data.seasons)) {
-        throw new Error("Dados de temporadas inválidos.");
+      let seasons = data.seasons;
+      // Normaliza formatos legados antes de persistir: o formato canônico é
+      // um mapa { "1": { watchedEpisodes: [...], ... }, "2": { ... } }.
+      if (typeof seasons === "string" && seasons.trim()) {
+        try { seasons = JSON.parse(seasons); } catch { seasons = {}; }
       }
-      payload.seasons = data.seasons;
+      if (Array.isArray(seasons)) {
+        seasons = Object.fromEntries(seasons.map((season, index) => [
+          String(season?.number ?? index + 1),
+          season && typeof season === "object" ? season : {}
+        ]));
+      }
+      if (!seasons || typeof seasons !== "object") seasons = {};
+      payload.seasons = seasons;
     }
     for (const key of ["score", "progressSeason", "progressEpisode"]) {
       if (Object.prototype.hasOwnProperty.call(data, key)) payload[key] = key === "score" ? Math.max(0, Math.min(100, Number(data[key]) || 0)) : (data[key] === "" || data[key] == null ? "" : Number(data[key]));
     }
-    if (data.status === "in_progress" || data.status === "paused") payload.endedAt = "";
-    else if (data.status && !Object.prototype.hasOwnProperty.call(data, "endedAt")) payload.endedAt = old.endedAt || new Date().toISOString().slice(0,10);
+    if (data.status === "in_progress" || data.status === "paused") {
+      payload.endedAt = "";
+      payload.endedAtSource = "unknown";
+    } else if (data.status && !Object.prototype.hasOwnProperty.call(data, "endedAt")) {
+      payload.endedAt = old.endedAt || new Date().toISOString().slice(0,10);
+      payload.endedAtSource = old.endedAt ? (old.endedAtSource || (old.endedAtAuto ? "automatic" : "legacy")) : "automatic";
+    }
     await setDoc(ref, payload, { merge: true });
     await cacheDelete(`logs:${old.type}:${old.itemId}`);
     await window.hubFB.syncOverallStatus(old.itemId, old.type);
