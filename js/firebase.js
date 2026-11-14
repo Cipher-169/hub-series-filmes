@@ -319,8 +319,17 @@ window.hubFB = {
       }
     }
     const payload = { updatedAt: serverTimestamp() };
-    for (const key of ["status", "startedAt", "endedAt", "notes", "seasons"]) {
+    for (const key of ["status", "startedAt", "endedAt", "notes"]) {
       if (Object.prototype.hasOwnProperty.call(data, key)) payload[key] = String(data[key] ?? "");
+    }
+    // `seasons` é um mapa estruturado (temporada -> episódios, nota e datas).
+    // Convertê-lo para String destrói os dados como "[object Object]" e impede
+    // que o progresso seja recuperado ao reabrir a série.
+    if (Object.prototype.hasOwnProperty.call(data, "seasons")) {
+      if (!data.seasons || typeof data.seasons !== "object" || Array.isArray(data.seasons)) {
+        throw new Error("Dados de temporadas inválidos.");
+      }
+      payload.seasons = data.seasons;
     }
     for (const key of ["score", "progressSeason", "progressEpisode"]) {
       if (Object.prototype.hasOwnProperty.call(data, key)) payload[key] = key === "score" ? Math.max(0, Math.min(100, Number(data[key]) || 0)) : (data[key] === "" || data[key] == null ? "" : Number(data[key]));

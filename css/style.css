@@ -2197,3 +2197,32 @@ body.discover-mode .top { padding-top:14px; padding-bottom:14px; }
     order:3;
   }
 }
+
+
+/* V44 — ação em lote de temporada com a identidade visual do Hub */
+.season-save-row .btn-toggle-season-watched {
+  appearance:none;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  min-height:40px;
+  padding:8px 14px;
+  border:1px solid var(--line-strong);
+  border-radius:999px;
+  background:rgba(208,173,120,.075);
+  color:var(--text);
+  font:500 .76rem var(--sans);
+  line-height:1.25;
+  cursor:pointer;
+  white-space:nowrap;
+  transition:background .18s,border-color .18s,color .18s;
+}
+.season-save-row .btn-toggle-season-watched:hover {
+  border-color:rgba(208,173,120,.55);
+  background:rgba(208,173,120,.14);
+  color:var(--gold);
+}
+.season-save-row .btn-toggle-season-watched:disabled {
+  opacity:.6;
+  cursor:wait;
+}
