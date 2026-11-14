@@ -263,7 +263,16 @@ async function openTmdbPreview(id, mediaType){
   const type=mediaType==="tv"?"show":"movie";
   const existing=(type==="movie"?movies:shows).find(x=>String(x.id)===String(id));
   if(existing) return openItem(id,type);
-  try{const r=await fetch(`${TMDB_WORKER_URL}/api/tmdb/${mediaType}/${id}`);if(!r.ok)throw new Error("Não foi possível carregar os detalhes.");const d=await r.json();await openItem(id,type,d);}catch(e){alert(e.message);}
+  try {
+    const r = await fetch(`${TMDB_WORKER_URL}/api/tmdb/${mediaType}/${id}`, { signal: AbortSignal.timeout(15000) });
+    if (!r.ok) throw new Error("Não foi possível carregar os detalhes. Tente novamente.");
+    const d = await r.json();
+    await openItem(id, type, d);
+  } catch (e) {
+    const dialog = $("dlg");
+    if (dialog?.open) dialog.close();
+    alert(e.name === "TimeoutError" || e.name === "AbortError" ? "A consulta ao catálogo demorou demais. Verifique sua conexão e tente novamente." : e.message);
+  }
 }
 
 /* ---- Aba "Estatísticas" ---- */
@@ -361,11 +370,16 @@ async function openItem(id, type, previewData = null) {
   if (!previewData && (!item.cast?.length || !item.genres?.length)) {
     try {
       const mediaType = isShow ? "tv" : "movie";
-      const response = await fetch(`${TMDB_WORKER_URL}/api/tmdb/${mediaType}/${encodeURIComponent(id)}`);
+      const response = await fetch(`${TMDB_WORKER_URL}/api/tmdb/${mediaType}/${encodeURIComponent(id)}`, {
+        signal: AbortSignal.timeout(12000)
+      });
       if (response.ok) {
         const fresh = await response.json();
         Object.assign(item, fresh, { cover:fresh.posterUrl || item.cover, banner:fresh.backdropUrl || item.banner });
-        if (inCatalog && window.hubFB && fbUser) await hubFB.saveItemNote(id, type, fresh);
+        if (inCatalog && window.hubFB && fbUser) {
+          // A atualização auxiliar não deve impedir a abertura da ficha.
+          hubFB.saveItemNote(id, type, fresh).catch(error => console.warn("Não foi possível salvar os metadados atualizados", error));
+        }
       }
     } catch (error) { console.warn("Não foi possível atualizar a ficha do TMDB", error); }
   }
@@ -373,7 +387,13 @@ async function openItem(id, type, previewData = null) {
   if (requestToken !== modalRequestToken) return;
   let note = {};
   if (window.hubFB) {
-    try { note = await hubFB.getItemNote(id, type); } catch (e) {}
+    try {
+      // Firestore pode demorar ou ficar sem resposta; a ficha deve continuar abrindo.
+      note = await Promise.race([
+        hubFB.getItemNote(id, type),
+        new Promise(resolve => setTimeout(() => resolve({}), 7000))
+      ]) || {};
+    } catch (e) { console.warn("Não foi possível carregar as anotações pessoais", e); }
   }
   if (requestToken !== modalRequestToken) return;
   const currentStatus = note.status || item.status || "plantowatch";
