@@ -691,8 +691,12 @@ async function loadSeriesSeasons(showId, savedNote, selectedJourneyId = "") {
       if (score !== null && (!Number.isInteger(score) || score < 0 || score > 100)) { status.textContent = "A nota deve ser um número inteiro entre 0 e 100."; return; }
       const data = savedSeasons[sn] = savedSeasons[sn] || {watchedEpisodes:[]};
       if (score === null) delete data.score; else data.score = score;
-      data.startedAt = block.querySelector('[name="seasonStartedAt"]').value;
-      data.endedAt = block.querySelector('[name="seasonEndedAt"]').value;
+      const nextStartedAt = block.querySelector('[name="seasonStartedAt"]').value;
+      const nextEndedAt = block.querySelector('[name="seasonEndedAt"]').value;
+      data.startedAtSource = nextStartedAt ? (nextStartedAt !== String(data.startedAt || "") ? "user" : (data.startedAtSource || "legacy")) : "unknown";
+      data.endedAtSource = nextEndedAt ? (nextEndedAt !== String(data.endedAt || "") ? "user" : (data.endedAtSource || (data.endedAtAuto ? "automatic" : "legacy"))) : "unknown";
+      data.startedAt = nextStartedAt;
+      data.endedAt = nextEndedAt;
       delete data.endedAtAuto;
       status.textContent = "Salvando…"; btn.disabled = true;
       try {
@@ -714,9 +718,9 @@ async function loadSeriesSeasons(showId, savedNote, selectedJourneyId = "") {
       const previous = [...(data.watchedEpisodes || [])];
       data.watchedEpisodes = wasFinished ? [] : buttons.map(ep => Number(ep.dataset.ep));
       if (!wasFinished) {
-        if (!data.startedAt) data.startedAt = localDateISO();
-        if (!data.endedAt || data.endedAtAuto) { data.endedAt = localDateISO(); data.endedAtAuto = true; }
-      } else if (data.endedAtAuto) { data.endedAt = ""; data.endedAtAuto = false; }
+        if (!data.startedAt) { data.startedAt = localDateISO(); data.startedAtSource = "automatic"; }
+        if (!data.endedAt || data.endedAtAuto) { data.endedAt = localDateISO(); data.endedAtAuto = true; data.endedAtSource = "automatic"; }
+      } else if (data.endedAtAuto) { data.endedAt = ""; data.endedAtAuto = false; data.endedAtSource = "unknown"; }
       buttons.forEach(ep => ep.classList.toggle("watched", !wasFinished));
       btn.disabled = true;
       try {
@@ -742,11 +746,11 @@ async function loadSeriesSeasons(showId, savedNote, selectedJourneyId = "") {
       if (wasWatched) set.delete(epNum); else set.add(epNum);
       const previous = [...(data.watchedEpisodes || [])];
       data.watchedEpisodes = [...set];
-      if (!wasWatched && !data.startedAt) data.startedAt = localDateISO();
+      if (!wasWatched && !data.startedAt) { data.startedAt = localDateISO(); data.startedAtSource = "automatic"; }
       const total = block.querySelectorAll(".ep-btn").length;
       if (total > 0 && set.size >= total) {
         if (!data.endedAt || data.endedAtAuto) { data.endedAt = localDateISO(); data.endedAtAuto = true; }
-      } else if (data.endedAtAuto) { data.endedAt = ""; data.endedAtAuto = false; }
+      } else if (data.endedAtAuto) { data.endedAt = ""; data.endedAtAuto = false; data.endedAtSource = "unknown"; }
       btn.classList.toggle("watched", !wasWatched);
       btn.disabled = true;
       try {
@@ -958,7 +962,7 @@ function renderDiaryEntries(id, type, logs) {
       return;
     }
     const action=e.target.closest("[data-journey-status]");
-    if(action){action.disabled=true;const status=action.dataset.journeyStatus;try{await hubFB.updateJourney(action.dataset.journeyId,{status,...(status==="completed"||status==="abandoned"?{endedAt:localDateISO()}:{})});await loadCatalog();await loadDiary(id,type);}catch(err){alert(`Não foi possível atualizar: ${err.message||err.code}`);action.disabled=false;}return;}
+    if(action){action.disabled=true;const status=action.dataset.journeyStatus;try{await hubFB.updateJourney(action.dataset.journeyId,{status,...(status==="completed"||status==="abandoned"?{endedAt:localDateISO(),endedAtSource:"automatic"}:{})});await loadCatalog();await loadDiary(id,type);}catch(err){alert(`Não foi possível atualizar: ${err.message||err.code}`);action.disabled=false;}return;}
   };
   experienceRoot.onsubmit = async e => {
     const form=e.target.closest("[data-journey-form]"); if(!form)return; e.preventDefault();
