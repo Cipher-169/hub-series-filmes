@@ -2165,3 +2165,35 @@ body.discover-mode .top { padding-top:14px; padding-bottom:14px; }
   transform: translateY(-9px);
   margin-bottom: -9px;
 }
+
+
+/* V42 — ações da temporada alinhadas estruturalmente, sem deslocamentos por pixels */
+.season-save-row {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  min-height:44px;
+}
+.season-save-row .season-save-status {
+  flex:1 1 auto;
+  min-width:0;
+}
+.season-save-row .btn-toggle-season-watched {
+  flex:0 0 auto;
+  align-self:center;
+  margin:0;
+  transform:none;
+  white-space:nowrap;
+}
+@media(max-width:680px) {
+  .season-save-row {
+    grid-column:1;
+    flex-wrap:wrap;
+    justify-content:flex-start;
+  }
+  .season-save-row .season-save-status {
+    flex-basis:100%;
+    order:3;
+  }
+}

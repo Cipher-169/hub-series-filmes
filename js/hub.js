@@ -5,7 +5,7 @@
    CONTROLE DE VERSÃO:
    Sempre que modificar este arquivo incremente HUB_VERSION em +1.
    ===================================================================== */
-const HUB_VERSION = 32;
+const HUB_VERSION = 33;
 window.HUB_VERSION = HUB_VERSION;
 document.getElementById("project-version").textContent = `v${HUB_VERSION}`;
 
@@ -25,6 +25,7 @@ let watching   = [];   // em andamento (filmes + séries)
 let activeItem = null;
 let modalRequestToken = 0; // item aberto no modal
 let diaryRequestToken = 0; // impede respostas antigas de sobrescreverem experiências/diário
+let seriesSeasonsRequestToken = 0; // impede renderização de temporadas com experiências desatualizadas
 let showSeasonsCache = new Map(); // cache das temporadas de séries
 let tmdbSearchResults = [];
 const TMDB_WORKER_URL = "https://hub-filmes-series.world-testaocenter790.workers.dev";
@@ -344,6 +345,7 @@ const wideCard = item => {
 async function openItem(id, type, previewData = null) {
   const requestToken = ++modalRequestToken;
   ++diaryRequestToken;
+  ++seriesSeasonsRequestToken;
   const d = $("dlg");
   // Abra imediatamente: a busca de metadados/notas não deve bloquear a interação.
   d.innerHTML = `<div class="msg modal-loading"><span class="loading-spinner"></span> Abrindo detalhes…</div>`;
@@ -551,6 +553,7 @@ async function openItem(id, type, previewData = null) {
 async function loadSeriesSeasons(showId, savedNote, selectedJourneyId = "") {
   const container = $("series-seasons-container");
   if (!container) return;
+  const requestToken = ++seriesSeasonsRequestToken;
 
   try {
     let seasonsData = showSeasonsCache.get(showId);
@@ -575,6 +578,9 @@ async function loadSeriesSeasons(showId, savedNote, selectedJourneyId = "") {
     const regularSeasons = seasonsData.filter(s => s.number > 0);
     const seasonsList = regularSeasons.length ? regularSeasons : seasonsData;
     const journeys = fbUser && hubFB?.getItemJourneys ? await hubFB.getItemJourneys(showId, "show") : [];
+    if (requestToken !== seriesSeasonsRequestToken ||
+        !activeItem || String(activeItem.id) !== String(showId) || activeItem.type !== "show" ||
+        !$("dlg")?.open) return;
     const selectedJourney = journeys.find(j => String(j.id) === String(selectedJourneyId)) || journeys.find(j => j.status === "in_progress") || journeys[0] || null;
     // Compatibilidade: registros antigos salvos na obra continuam visíveis caso não haja jornada.
     const savedSeasons = selectedJourney?.seasons || (journeys.length ? {} : (savedNote?.seasons || {}));
@@ -603,10 +609,9 @@ async function loadSeriesSeasons(showId, savedNote, selectedJourneyId = "") {
                 <label>Nota da temporada (0–100)<input class="season-score-input" type="number" min="0" max="100" step="1" value="${scoreValue}" placeholder="Não avaliada"></label>
                 <label>Data de início${calendarPickerMarkup({name:"seasonStartedAt",value:data.startedAt||"",placeholder:"Selecionar data"})}</label>
                 <label>Data de conclusão${calendarPickerMarkup({name:"seasonEndedAt",value:data.endedAt||"",placeholder:"Selecionar data"})}</label>
-                <div class="season-save-row"><button type="button" class="btn-save-season-data" data-season="${sn}">Salvar temporada</button><span class="meta season-save-status" aria-live="polite"></span></div>
+                <div class="season-save-row"><button type="button" class="btn-save-season-data" data-season="${sn}">Salvar temporada</button><span class="meta season-save-status" aria-live="polite"></span>${fbUser ? `<button type="button" class="btn-toggle-season-watched" data-season="${sn}">${finished?"Desmarcar temporada":"Marcar temporada como assistida"}</button>` : ""}</div>
               </div>
               ${finished ? `<small class="season-finished-note">Temporada concluída nesta experiência.</small>` : ""}
-              ${fbUser ? `<div class="season-bulk-actions"><button type="button" class="btn-toggle-season-watched" data-season="${sn}">${finished?"Desmarcar temporada":"Marcar temporada como assistida"}</button></div>` : ""}
               <div class="episodes-grid">${episodes.map(ep=>`<button type="button" class="ep-btn ${watched.has(ep.number)?"watched":""}" ${!fbUser?"disabled":""} data-season="${sn}" data-ep="${ep.number}" title="Episódio ${ep.number}">E${ep.number}</button>`).join("")}</div>
             </div>
           </section>`;
@@ -950,6 +955,15 @@ async function loadDiary(id, type) {
       String(activeItem?.type) === String(type);
     if (requestToken !== diaryRequestToken || !sameItemIsOpen) return;
     renderDiaryEntries(id, type, logs);
+    // A aba de experiências pode criar/editar/excluir jornadas. Reconstrua também
+    // o seletor de progresso e os episódios com a lista mais recente do Firebase.
+    if (type === "show") {
+      let latestNote = {};
+      try { latestNote = await hubFB.getItemNote(id, type); } catch (_) {}
+      if (requestToken !== diaryRequestToken || !sameItemIsOpen) return;
+      const selected = $("season-journey-select")?.value || "";
+      await loadSeriesSeasons(id, latestNote, selected);
+    }
   } catch (err) {
     if (requestToken !== diaryRequestToken) return;
     const message = `Não consegui atualizar as experiências e o diário (${esc(err.code || err.message)}).`;
