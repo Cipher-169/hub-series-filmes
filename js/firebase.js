@@ -8,7 +8,7 @@ import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChang
   from "https://www.gstatic.com/firebasejs/13.2.0/firebase-auth.js";
 import {
   initializeFirestore, persistentLocalCache, persistentMultipleTabManager,
-  collection, doc, getDoc, getDocs, addDoc, setDoc, deleteDoc,
+  collection, doc, getDoc, getDocs, addDoc, setDoc, updateDoc, deleteDoc,
   serverTimestamp, query, where,
 } from "https://www.gstatic.com/firebasejs/13.2.0/firebase-firestore.js";
 
@@ -235,7 +235,12 @@ window.hubFB = {
   syncOverallStatus: async (itemId, type) => {
     requireOwner();
     const journeys = await window.hubFB.getItemJourneys(itemId, type);
-    if (!journeys.length) return null;
+    if (!journeys.length) {
+      await setDoc(notePath(itemId, type), { status: "plantowatch", updatedAt: serverTimestamp() }, { merge: true });
+      await cacheDelete(`note:${type}:${itemId}`);
+      await cacheDelete("personal_catalog");
+      return "plantowatch";
+    }
     const ordered = [...journeys].sort((a,b) => (b.createdAtMs||0)-(a.createdAtMs||0));
     const active = ordered.find(j => j.status === "in_progress");
     const paused = ordered.find(j => j.status === "paused");
@@ -245,6 +250,23 @@ window.hubFB = {
     await cacheDelete(`note:${type}:${itemId}`);
     await cacheDelete("personal_catalog");
     return status;
+  },
+
+  deleteJourney: async (journeyId) => {
+    requireOwner();
+    const ref = doc(db, "users", OWNER_UID, "mediaLogs", String(journeyId));
+    const snap = await getDoc(ref);
+    if (!snap.exists() || snap.data().recordType !== "journey") throw new Error("Experiência não encontrada.");
+    const journey = snap.data();
+    const q = query(logsCol(), where("itemId", "==", String(journey.itemId)), where("type", "==", journey.type));
+    const related = await getDocs(q);
+    // Preserva o Diário e remove somente o vínculo com a experiência excluída.
+    const linked = related.docs.filter(d => d.id !== String(journeyId) && String(d.data().journeyId || "") === String(journeyId));
+    for (const log of linked) await updateDoc(log.ref, { journeyId: "", updatedAt: serverTimestamp() });
+    await deleteDoc(ref);
+    await cacheDelete(`logs:${journey.type}:${journey.itemId}`);
+    await cacheDelete("personal_catalog");
+    await window.hubFB.syncOverallStatus(journey.itemId, journey.type);
   },
 
   updateJourney: async (journeyId, data) => {
