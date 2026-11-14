@@ -5,7 +5,7 @@
    CONTROLE DE VERSÃO:
    Sempre que modificar este arquivo incremente HUB_VERSION em +1.
    ===================================================================== */
-const HUB_VERSION = 21;
+const HUB_VERSION = 22;
 window.HUB_VERSION = HUB_VERSION;
 document.getElementById("project-version").textContent = `v${HUB_VERSION}`;
 
@@ -182,7 +182,7 @@ async function renderDiscover() {
 function discoverCard(item) {
   const type=item.mediaType==="tv"?"show":"movie", exists=[...movies,...shows].some(x=>x.type===type&&String(x.id)===String(item.id));
   const poster=item.posterUrl?`<img src="${esc(item.posterUrl)}" alt="Pôster de ${esc(item.title)}" loading="lazy">`:`<div class="discover-no-poster">Sem pôster</div>`;
-  return `<article class="discover-card" tabindex="0" aria-label="Ver detalhes de ${esc(item.title)}" data-preview-id="${esc(item.id)}" data-preview-type="${item.mediaType}">${poster}<div class="discover-card-info"><strong>${esc(item.title)}</strong><span>${item.year||"Ano desconhecido"} · ${type==="show"?"Série":"Filme"}</span><span class="discover-rating">★ ${Number(item.voteAverage||0).toFixed(1)}</span><button type="button" data-add-tmdb="${esc(item.id)}" data-media-type="${item.mediaType}" ${exists||!fbUser?"disabled":""}>${exists?"Na biblioteca":fbUser?"+ Adicionar":"Entre para adicionar"}</button></div></article>`;
+  return `<article class="discover-card" tabindex="0" aria-label="Ver detalhes de ${esc(item.title)}" data-preview-id="${esc(item.id)}" data-preview-type="${item.mediaType}">${poster}<div class="discover-card-info"><strong>${esc(item.title)}</strong><span>${item.year||"Ano desconhecido"} · ${type==="show"?"Série":"Filme"}</span><span class="discover-rating">★ ${Number(item.voteAverage||0).toFixed(1)}</span><div class="discover-add-controls"><select aria-label="Status ao adicionar" data-add-status ${exists||!fbUser?"disabled":""}><option value="plantowatch">Quero assistir</option><option value="watching">Assistindo</option><option value="completed">Concluído</option><option value="paused">Pausado</option><option value="dropped">Abandonado</option></select><button type="button" data-add-tmdb="${esc(item.id)}" data-media-type="${item.mediaType}" ${exists||!fbUser?"disabled":""}>${exists?"Na biblioteca":fbUser?"Adicionar":"Entre para adicionar"}</button></div></div></article>`;
 }
 function renderSearchPagination(totalPages=1) {
   const holder=$("search-pagination");
@@ -386,7 +386,7 @@ async function openItem(id, type, previewData = null) {
         </div>
         <p class="diary-intro detail-overview">${esc(item.overview || "Sem sinopse disponível.")}</p>
         ${item.cast?.length ? `<div class="detail-cast"><h3>Elenco principal</h3><p>${esc(item.cast.join(" · "))}</p></div>` : ""}
-        ${inCatalog && isOwner() ? `<button type="button" class="remove-catalog-btn" id="btn-remove-catalog">Remover da minha biblioteca</button>` : !inCatalog ? `<button type="button" class="tmdb-add-btn" id="btn-add-preview" ${!fbUser?"disabled":""}>${fbUser?"Adicionar à minha biblioteca":"Entre para adicionar"}</button>` : ""}
+        ${inCatalog && isOwner() ? `<button type="button" class="remove-catalog-btn" id="btn-remove-catalog">Remover da minha biblioteca</button>` : !inCatalog ? `<div class="detail-add-controls"><label for="detail-add-status">Adicionar como</label><select id="detail-add-status" ${!fbUser?"disabled":""}><option value="plantowatch">Quero assistir</option><option value="watching">Assistindo</option><option value="completed">Concluído</option><option value="paused">Pausado</option><option value="dropped">Abandonado</option></select><button type="button" class="tmdb-add-btn" id="btn-add-preview" ${!fbUser?"disabled":""}>${fbUser?"Adicionar à minha biblioteca":"Entre para adicionar"}</button></div>` : ""}
         ${isShow && inCatalog ? `<div id="series-seasons-container"><div class="msg">Carregando temporadas e episódios…</div></div>` : ""}
       </section>
 
@@ -410,7 +410,7 @@ async function openItem(id, type, previewData = null) {
   });
   $("btn-add-preview")?.addEventListener("click", async () => {
     if (!fbUser) return;
-    try { await hubFB.addCatalogItem({ ...previewData, status:"plantowatch" }); await loadCatalog(); d.close(); }
+    try { await hubFB.addCatalogItem({ ...previewData, status:$("detail-add-status")?.value || "plantowatch" }); await loadCatalog(); d.close(); }
     catch(err) { alert(`Não foi possível adicionar: ${err.code || err.message}`); }
   });
 
@@ -713,9 +713,9 @@ function renderDiaryEntries(id, type, logs) {
         <form class="journey-inline-form hidden" data-journey-form="${esc(j.id)}">
           <div class="journey-edit-grid">
             <label>Status<select name="status"><option value="in_progress" ${j.status==="in_progress"?"selected":""}>Em andamento</option><option value="paused" ${j.status==="paused"?"selected":""}>Pausada</option><option value="completed" ${j.status==="completed"?"selected":""}>Concluída</option><option value="abandoned" ${j.status==="abandoned"?"selected":""}>Abandonada</option></select></label>
-            <label>Nota individual (0–100)<input name="score" type="number" min="0" max="100" step="1" value="${Number(j.score)>0?Number(j.score):""}" placeholder="Não avaliada"></label>
-            <label>Data de início<input name="startedAt" type="date" value="${esc(j.startedAt||"")}"><small>Deixe em branco se não souber.</small></label><label>Data de conclusão<input name="endedAt" type="date" value="${esc(j.endedAt||"")}"><small>Informe quando terminou; pode ficar em branco.</small></label>
-            ${isShow?`<label>Temporada atual<input name="progressSeason" type="number" min="0" step="1" value="${j.progressSeason??""}"></label><label>Episódio atual<input name="progressEpisode" type="number" min="0" step="1" value="${j.progressEpisode??""}"></label>`:""}
+            <label>Nota individual (0–100)<div class="custom-number"><input name="score" type="number" min="0" max="100" step="1" value="${Number(j.score)>0?Number(j.score):""}" placeholder="Não avaliada"><span class="number-stepper"><button type="button" data-number-step="-1" aria-label="Diminuir nota">−</button><button type="button" data-number-step="1" aria-label="Aumentar nota">+</button></span></div></label>
+            <label>Data de início<div class="custom-date"><input name="startedAt" type="date" value="${esc(j.startedAt||"")}"></div><small>Deixe em branco se não souber.</small></label><label>Data de conclusão<div class="custom-date"><input name="endedAt" type="date" value="${esc(j.endedAt||"")}"></div><small>Informe quando terminou; pode ficar em branco.</small></label>
+            ${isShow?`<label>Temporada atual<div class="custom-number"><input name="progressSeason" type="number" min="0" step="1" value="${j.progressSeason??""}"><span class="number-stepper"><button type="button" data-number-step="-1" aria-label="Diminuir temporada">−</button><button type="button" data-number-step="1" aria-label="Aumentar temporada">+</button></span></div></label><label>Episódio atual<div class="custom-number"><input name="progressEpisode" type="number" min="0" step="1" value="${j.progressEpisode??""}"><span class="number-stepper"><button type="button" data-number-step="-1" aria-label="Diminuir episódio">−</button><button type="button" data-number-step="1" aria-label="Aumentar episódio">+</button></span></div></label>`:""}
             <label class="journey-edit-wide">Observações desta experiência<textarea name="notes" rows="4" maxlength="10000" placeholder="Anotações sobre esta jornada…">${esc(j.notes||"")}</textarea></label>
           </div><div class="journey-edit-footer"><span class="diary-status" role="status"></span><button type="button" data-cancel-journey="${esc(j.id)}">Cancelar</button><button type="submit" class="journey-save-btn">Salvar alterações</button></div>
         </form>
@@ -732,8 +732,21 @@ function renderDiaryEntries(id, type, logs) {
 
   $("btn-new-journey")?.addEventListener("click", async ev=>{const b=ev.currentTarget;b.disabled=true;b.textContent="Criando…";try{await hubFB.createJourney({itemId:id,type});await loadCatalog();await loadDiary(id,type);}catch(err){alert(`Não foi possível iniciar a experiência: ${err.message||err.code}`);b.disabled=false;b.textContent="+ Iniciar nova experiência";}});
 
-  const experienceRoot = $("experiences-content");
-  experienceRoot.addEventListener("click", async e => {
+  const experienceRoot = $("diary-content");
+  experienceRoot.onclick = async e => {
+    const stepButton = e.target.closest("[data-number-step]");
+    if (stepButton) {
+      const input = stepButton.closest(".custom-number")?.querySelector("input");
+      if (input) {
+        const min = input.min === "" ? -Infinity : Number(input.min);
+        const max = input.max === "" ? Infinity : Number(input.max);
+        const next = Math.min(max, Math.max(min, (Number(input.value) || 0) + Number(stepButton.dataset.numberStep)));
+        input.value = String(next);
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+        input.dispatchEvent(new Event("change", { bubbles: true }));
+      }
+      return;
+    }
     const toggle = e.target.closest("[data-toggle-journey]");
     if (toggle) {
       const idToOpen = toggle.dataset.toggleJourney;
@@ -758,8 +771,8 @@ function renderDiaryEntries(id, type, logs) {
     }
     const action=e.target.closest("[data-journey-status]");
     if(action){action.disabled=true;const status=action.dataset.journeyStatus;try{await hubFB.updateJourney(action.dataset.journeyId,{status,...(status==="completed"||status==="abandoned"?{endedAt:localDateISO()}:{})});await loadCatalog();await loadDiary(id,type);}catch(err){alert(`Não foi possível atualizar: ${err.message||err.code}`);action.disabled=false;}return;}
-  });
-  experienceRoot.addEventListener("submit", async e => {
+  };
+  experienceRoot.onsubmit = async e => {
     const form=e.target.closest("[data-journey-form]"); if(!form)return; e.preventDefault();
     const d=new FormData(form), status=String(d.get("status")||"in_progress"), raw=String(d.get("score")||"").trim(), score=raw===""?0:Number(raw), msg=form.querySelector(".diary-status");
     if(!Number.isInteger(score)||score<0||score>100){msg.textContent="A nota deve estar entre 0 e 100.";return;}
@@ -769,7 +782,7 @@ function renderDiaryEntries(id, type, logs) {
     if(status==="in_progress"||status==="paused")payload.endedAt="";
     const save=form.querySelector('button[type="submit"]');save.disabled=true;msg.textContent="Salvando…";
     try{await hubFB.updateJourney(form.dataset.journeyForm,payload);await loadCatalog();await loadDiary(id,type);}catch(err){msg.textContent=err.message||err.code||"Erro ao salvar.";save.disabled=false;}
-  });
+  };
 
   $("diary-form")?.addEventListener("submit",async ev=>{ev.preventDefault();const status=$("diary-status"),episode=isShow?Number($("diary-episode").value):null,watchedAt=$("diary-forgot").checked?"":$("diary-date").value,comment=$("diary-comment").value.trim();if(!comment){status.textContent="Preencha o comentário.";return;}const submit=ev.currentTarget.querySelector('button[type="submit"]');submit.disabled=true;status.textContent="Salvando…";try{const journeyId=$("diary-journey")?.value;if(!journeyId)throw new Error("Inicie uma experiência antes de registrar.");await hubFB.addItemLog({itemId:id,type,journeyId,episode,watchedAt,comment});await loadDiary(id,type);}catch(err){status.textContent="Não foi possível salvar: "+(err.code||err.message);submit.disabled=false;}});
   $("diary-content").onsubmit=async ev=>{const f=ev.target.closest("[data-save-log]");if(!f)return;ev.preventDefault();const d=new FormData(f),payload={comment:String(d.get("comment")||"").trim(),watchedAt:String(d.get("watchedAt")||"")};if(isShow){payload.episode=Number(d.get("episode"));if(!Number.isInteger(payload.episode)||payload.episode<0){alert("Número de episódio inválido.");return;}}if(!payload.comment){alert("O comentário não pode ficar vazio.");return;}const b=f.querySelector('button[type="submit"]');b.disabled=true;try{await hubFB.updateItemLog(f.dataset.saveLog,payload);await loadDiary(id,type);}catch(err){b.disabled=false;alert(`Não foi possível editar: ${err.code||err.message}`);}};
@@ -926,7 +939,7 @@ document.addEventListener("click",async e=>{
   if(!fbUser||!window.hubFB){alert("Entre com sua conta Google para adicionar títulos.");return;}
   const id=button.dataset.addTmdb, mediaType=button.dataset.mediaType||tmdbSearchResults.find(x=>String(x.id)===id)?.mediaType; if(!mediaType)return;
   button.disabled=true;button.textContent="Adicionando…";
-  try{const r=await fetch(`${TMDB_WORKER_URL}/api/tmdb/${mediaType}/${id}`);if(!r.ok)throw new Error("Não foi possível carregar os detalhes do título.");const detail=await r.json();await hubFB.addCatalogItem({...detail,status:"plantowatch"});await loadCatalog();button.textContent="Adicionado";button.closest(".tmdb-result,.discover-card")?.classList.add("is-added");}
+  try{const r=await fetch(`${TMDB_WORKER_URL}/api/tmdb/${mediaType}/${id}`);if(!r.ok)throw new Error("Não foi possível carregar os detalhes do título.");const detail=await r.json();const selectedStatus=button.closest(".discover-card")?.querySelector("[data-add-status]")?.value || "plantowatch";await hubFB.addCatalogItem({...detail,status:selectedStatus});await loadCatalog();button.textContent="Adicionado";button.closest(".tmdb-result,.discover-card")?.classList.add("is-added");}
   catch(err){console.error(err);button.disabled=false;button.textContent="Tentar novamente";alert(`Não foi possível adicionar: ${err.code||err.message}`);}
 });
 

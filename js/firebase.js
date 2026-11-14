@@ -141,12 +141,30 @@ window.hubFB = {
     if (!item?.id || !["movie", "tv"].includes(item.mediaType)) throw new Error("Título TMDB inválido.");
     const id = String(item.id);
     const type = item.mediaType === "tv" ? "show" : "movie";
+    const status = ["plantowatch", "watching", "paused", "completed", "dropped"].includes(item.status) ? item.status : "plantowatch";
     await setDoc(notePath(id, type), {
       ...item, id, itemId: id, type, inCatalog: true,
-      status: item.status || "plantowatch", addedAt: serverTimestamp()
+      status, addedAt: serverTimestamp()
     }, { merge: true });
+
+    // Statuses that represent a viewing journey create one automatically.
+    const journeyStatus = ({ watching: "in_progress", paused: "paused", completed: "completed", dropped: "abandoned" })[status];
+    if (journeyStatus) {
+      const now = new Date().toISOString().slice(0,10);
+      const journey = {
+        itemId: id, type, recordType: "journey", journeyType: "first",
+        status: journeyStatus,
+        startedAt: journeyStatus === "in_progress" ? now : "",
+        endedAt: ["completed", "abandoned"].includes(journeyStatus) ? now : "",
+        score: 0, progressSeason: "", progressEpisode: "", notes: "",
+        createdAt: serverTimestamp(),
+      };
+      await addDoc(logsCol(), journey);
+    }
     await cacheDelete("personal_catalog");
     await cacheDelete(`note:${type}:${id}`);
+    await cacheDelete(`logs:${type}:${id}`);
+    if (journeyStatus) await window.hubFB.syncOverallStatus(id, type);
   },
   removeCatalogItem: async (id, type) => {
     requireOwner();
