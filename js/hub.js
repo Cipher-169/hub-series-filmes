@@ -864,7 +864,7 @@ async function loadSeriesSeasons(showId, savedNote, selectedJourneyId = "") {
         if (!result.ok) throw new Error(`Não foi possível carregar a temporada ${season.seasonNumber}.`);
         const data = await result.json();
         return { number: data.seasonNumber, name: data.name, episode_count: data.episodes?.length || season.episodeCount || 0,
-          episodes: (data.episodes || []).map(ep => ({ number: ep.number, name: ep.name, overview: ep.overview, stillUrl: ep.stillUrl })) };
+          episodes: (data.episodes || []).map(ep => ({ number: ep.number, name: ep.name, overview: ep.overview, stillUrl: ep.stillUrl, runtime: ep.runtime ?? null })) };
       }));
       showSeasonsCache.set(showId, seasonsData);
     }
