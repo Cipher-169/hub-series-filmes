@@ -2453,8 +2453,8 @@ body.discover-mode .top { padding-top:14px; padding-bottom:14px; }
   position:relative;
   display:flex;
   align-items:stretch;
-  width:116px;
-  min-width:116px;
+  width:146px;
+  min-width:146px;
 }
 .score-box-primary .score-number input#input-item-score {
   box-sizing:border-box;
@@ -2539,6 +2539,8 @@ body.discover-mode .top { padding-top:14px; padding-bottom:14px; }
 .diary-select-option:hover{background:rgba(211,177,125,.12);color:#f4d5a2}
 .diary-select-option.is-selected{background:rgba(211,177,125,.2);color:#f0c98d;font-weight:650}
 .diary-select-option.is-selected:before{content:"✓";display:inline-block;width:19px;color:#d3b17d}
+.diary-select-option.is-selected:hover,.diary-select-option.is-selected:focus{background:rgba(211,177,125,.28);color:#ffe0ad}
+.diary-select-option:not(.is-selected):hover,.diary-select-option:not(.is-selected):focus{background:rgba(211,177,125,.16);color:#f4d5a2}
 @media(max-width:560px){.diary-select-menu{max-height:190px}}
 
 /* V59 — evita cortar nomes longos dos meses no calendário */

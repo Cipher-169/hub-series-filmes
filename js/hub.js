@@ -334,9 +334,30 @@ function formatWatchTime(minutes){
   return `${mins}min`;
 }
 function getAverageEpisodeRuntime(item){
-  const raw=item.episodeRunTime??item.episode_run_time??item.runtime??item.episodeRuntime;
+  const raw=item?.episodeRunTime??item?.episode_run_time??item?.episodeRuntime??item?.averageEpisodeRuntime??item?.runtime;
   if(Array.isArray(raw)){const values=raw.map(Number).filter(n=>Number.isFinite(n)&&n>0);return values.length?values.reduce((a,b)=>a+b,0)/values.length:0;}
   const n=Number(raw);return Number.isFinite(n)&&n>0?n:0;
+}
+const showRuntimeCache=new Map();
+async function resolveShowEpisodeRuntime(item){
+  const stored=getAverageEpisodeRuntime(item);
+  if(stored>0)return stored;
+  const id=String(item?.id||"");
+  if(!id)return 0;
+  if(!showRuntimeCache.has(id)){
+    showRuntimeCache.set(id,(async()=>{
+      try{
+        const response=await fetch(`${TMDB_WORKER_URL}/api/tmdb/tv/${encodeURIComponent(id)}`,{signal:AbortSignal.timeout(12000)});
+        if(!response.ok)throw new Error(`TMDB HTTP ${response.status}`);
+        const detail=await response.json();
+        return getAverageEpisodeRuntime(detail);
+      }catch(error){
+        console.warn(`Não foi possível obter a duração média dos episódios da série ${id}`,error);
+        return 0;
+      }
+    })());
+  }
+  return showRuntimeCache.get(id);
 }
 function renderStats(){
   const root=$("view"),token=(window.__statsRenderToken=(window.__statsRenderToken||0)+1);
@@ -376,12 +397,15 @@ function renderStats(){
       const item=catalogByKey.get(`movie:${j.itemId}`),runtime=Number(item?.runtime||item?.duration||item?.runtimeMinutes||0);
       if(runtime>0){movieMinutes+=runtime;movieViews++;}else unestimatedMovies++;
     });
-    journeys.filter(j=>j.type==="show").forEach(j=>{
+    const showJourneys=journeys.filter(j=>j.type==="show");
+    const showItems=[...new Map(showJourneys.map(j=>[String(j.itemId),catalogByKey.get(`show:${j.itemId}`)]).filter(([,item])=>Boolean(item))).values()];
+    const showRuntimes=new Map(await Promise.all(showItems.map(async item=>[String(item.id),await resolveShowEpisodeRuntime(item)])));
+    showJourneys.forEach(j=>{
       let map=j.seasons;if(typeof map==="string"){try{map=JSON.parse(map)}catch{map={}}}
       if(Array.isArray(map))map=Object.fromEntries(map.map((v,i)=>[String(v?.number??i+1),v]));
-      const item=catalogByKey.get(`show:${j.itemId}`),runtime=getAverageEpisodeRuntime(item);
+      const runtime=showRuntimes.get(String(j.itemId))||0;
       if(map&&typeof map==="object")Object.values(map).forEach(season=>{
-        const count=Array.isArray(season?.watchedEpisodes)?season.watchedEpisodes.length:0;
+        const count=Array.isArray(season?.watchedEpisodes)?new Set(season.watchedEpisodes.map(Number).filter(n=>Number.isFinite(n)&&n>0)).size:0;
         if(!count)return;
         if(runtime>0){showMinutes+=count*runtime;watchedEpisodes+=count;}else unestimatedEpisodes+=count;
       });
