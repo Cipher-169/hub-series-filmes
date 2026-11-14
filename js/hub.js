@@ -5,7 +5,7 @@
    CONTROLE DE VERSÃO:
    Sempre que modificar este arquivo incremente HUB_VERSION em +1.
    ===================================================================== */
-const HUB_VERSION = 29;
+const HUB_VERSION = 30;
 window.HUB_VERSION = HUB_VERSION;
 document.getElementById("project-version").textContent = `v${HUB_VERSION}`;
 
@@ -56,6 +56,8 @@ const TMDB_STATUS_PT = {
   "Rumored": "Rumorada",
   "Post Production": "Pós-produção",
   "Released": "Lançado",
+  "On Hiatus": "Em pausa",
+  "Airing": "Em exibição",
 };
 function translateTmdbStatus(value) {
   const raw = String(value || "").trim();
@@ -554,8 +556,7 @@ async function loadSeriesSeasons(showId, savedNote, selectedJourneyId = "") {
       const response = await fetch(`${TMDB_WORKER_URL}/api/tmdb/tv/${encodeURIComponent(showId)}`);
       if (!response.ok) throw new Error(`TMDB respondeu com HTTP ${response.status}`);
       const detail = await response.json();
-      const seasons = detail.seasons || [];
-      seasonsData = await Promise.all(seasons.map(async season => {
+      seasonsData = await Promise.all((detail.seasons || []).map(async season => {
         const result = await fetch(`${TMDB_WORKER_URL}/api/tmdb/tv/${encodeURIComponent(showId)}/season/${season.seasonNumber}`);
         if (!result.ok) throw new Error(`Não foi possível carregar a temporada ${season.seasonNumber}.`);
         const data = await result.json();
@@ -564,174 +565,152 @@ async function loadSeriesSeasons(showId, savedNote, selectedJourneyId = "") {
       }));
       showSeasonsCache.set(showId, seasonsData);
     }
-    if (!seasonsData || !seasonsData.length) {
+    if (!seasonsData?.length) {
       container.innerHTML = `<div class="msg">Informações de temporadas indisponíveis no momento.</div>`;
       return;
     }
 
-    // Filtra temporada 0 (especiais) se vazia, foca em temporadas regulares
     const regularSeasons = seasonsData.filter(s => s.number > 0);
     const seasonsList = regularSeasons.length ? regularSeasons : seasonsData;
-
-    // O progresso de temporadas pertence a uma experiência específica.
     const journeys = fbUser && hubFB?.getItemJourneys ? await hubFB.getItemJourneys(showId, "show") : [];
     const selectedJourney = journeys.find(j => String(j.id) === String(selectedJourneyId)) || journeys.find(j => j.status === "in_progress") || journeys[0] || null;
+    // Compatibilidade: registros antigos salvos na obra continuam visíveis caso não haja jornada.
     const savedSeasons = selectedJourney?.seasons || (journeys.length ? {} : (savedNote?.seasons || {}));
     const saveSeasonData = async () => {
       if (selectedJourney) await hubFB.updateJourney(selectedJourney.id, { seasons: savedSeasons });
-      else await hubFB.saveItemNote(showId, "show", { seasons: savedSeasons });
+      else if (fbUser) await hubFB.saveItemNote(showId, "show", { seasons: savedSeasons });
     };
 
     container.innerHTML = `
       <h3 style="font:600 1.25rem var(--serif);margin:20px 0 10px">Temporadas &amp; Episódios</h3>
-      ${journeys.length ? `<div class="season-journey-picker"><label for="season-journey-select">Progresso desta experiência</label><select id="season-journey-select">${journeys.map(j=>`<option value="${esc(j.id)}" ${selectedJourney?.id===j.id?"selected":""}>Experiência ${String(journeys.length-journeys.indexOf(j)).padStart(2,"0")} — ${{in_progress:"Em andamento",paused:"Pausada",completed:"Concluída",abandoned:"Abandonada"}[j.status]||"Não definido"}</option>`).join("")}</select></div>` : `<p class="meta">Inicie uma experiência para acompanhar temporadas separadamente.</p>`}
+      ${journeys.length ? `<div class="season-journey-picker"><label for="season-journey-select">Progresso desta experiência</label><select id="season-journey-select">${journeys.map((j,i)=>`<option value="${esc(j.id)}" ${selectedJourney?.id===j.id?"selected":""}>Experiência ${String(journeys.length-i).padStart(2,"0")} — ${{in_progress:"Em andamento",paused:"Pausada",completed:"Concluída",abandoned:"Abandonada"}[j.status]||"Não definido"}</option>`).join("")}</select></div>` : `<p class="meta">Inicie uma experiência para acompanhar temporadas separadamente.</p>`}
       <div class="seasons-accordion">
-        ${seasonsList.map(s => {
-          const sNum = String(s.number);
-          const sSaved = savedSeasons[sNum] || {};
-          const watchedEps = new Set(sSaved.watchedEpisodes || []);
-          const totalEps = s.episode_count || s.episodes?.length || 0;
-          const watchedCount = watchedEps.size;
-          const pct = totalEps ? Math.round((watchedCount / totalEps) * 100) : 0;
-          const isFinished = totalEps > 0 && watchedCount >= totalEps;
-          const sScore = sSaved.score || 0;
-
-          return `
-            <div class="season-block" data-season="${sNum}">
-              <button type="button" class="season-header" data-toggle-season="${sNum}" aria-expanded="false" aria-controls="episodes-season-${sNum}">
-                <span class="season-title"><strong>Temporada ${sNum}</strong>${sScore > 0 ? ` · ${badge(sScore)}` : ""}</span>
-                <span class="season-header-meta">
-                  <span>${watchedCount} / ${totalEps} eps (${pct}%)</span>
-                  <span class="season-progress-bar"><i style="width:${pct}%"></i></span>
-                  <span class="season-chevron" aria-hidden="true">⌄</span>
-                </span>
-              </button>
-
-              <!-- Sugestão opcional de nota ao concluir temporada -->
-              ${isFinished && fbUser ? `
-                <div class="season-score-prompt">
-                  <strong>🎉 Temporada ${sNum} concluída!</strong>
-                  <div style="display:flex;gap:8px;align-items:center;margin-top:6px;flex-wrap:wrap">
-                    <span>Avalie esta temporada (opcional):</span>
-                    <input type="number" min="0" max="100" class="season-score-input" value="${sScore > 0 ? sScore : ""}" placeholder="0–100" style="width:70px;background:#090c16;border:1px solid rgba(255,145,107,.4);border-radius:7px;padding:4px 7px;color:#fff">
-                    <button type="button" class="btn-save-season-score" data-season="${sNum}" style="background:var(--sun);color:#1a0d08;border:0;border-radius:99px;padding:4px 12px;font-weight:600;font-size:.8rem">Salvar</button>
-                    <span class="meta status-season-${sNum}"></span>
-                  </div>
-                </div>` : ""}
-
-              <div class="season-content" id="episodes-season-${sNum}" hidden>
-                ${fbUser ? `<div class="season-bulk-actions"><button type="button" class="btn-toggle-season-watched" data-season="${sNum}" data-total="${totalEps}">${isFinished ? "Desmarcar temporada" : "Marcar temporada como assistida"}</button></div>` : ""}
-                <div class="episodes-grid">
-                ${(s.episodes || Array.from({ length: totalEps }, (_, i) => ({ number: i + 1 }))).map(ep => {
-                  const epNum = ep.number;
-                  const isWatched = watchedEps.has(epNum);
-                  return `<button type="button" class="ep-btn ${isWatched ? "watched" : ""}" ${!fbUser ? "disabled" : ""} data-season="${sNum}" data-ep="${epNum}" title="Episódio ${epNum}">E${epNum}</button>`;
-                }).join("")}
-                </div>
+        ${seasonsList.map(season => {
+          const sn = String(season.number), data = savedSeasons[sn] || {};
+          const episodes = season.episodes || Array.from({length:season.episode_count||0},(_,i)=>({number:i+1}));
+          const watched = new Set(data.watchedEpisodes || []), total = episodes.length || season.episode_count || 0;
+          const count = watched.size, pct = total ? Math.round(count/total*100) : 0, finished = total > 0 && count >= total;
+          const scoreValue = data.score === 0 || data.score ? Number(data.score) : "";
+          return `<section class="season-block" data-season="${sn}">
+            <button type="button" class="season-header" data-toggle-season="${sn}" aria-expanded="false" aria-controls="season-content-${sn}">
+              <span class="season-title"><strong>Temporada ${sn}</strong>${scoreValue !== "" ? ` · ${badge(scoreValue)}` : ""}</span>
+              <span class="season-header-meta"><span>${count} / ${total} eps (${pct}%)</span><span class="season-progress-bar"><i style="width:${pct}%"></i></span><span class="season-chevron" aria-hidden="true">⌄</span></span>
+            </button>
+            <div class="season-content" id="season-content-${sn}" hidden>
+              <div class="season-rating-grid">
+                <label>Nota da temporada (0–100)<input class="season-score-input" type="number" min="0" max="100" step="1" value="${scoreValue}" placeholder="Não avaliada"></label>
+                <label>Data de início${calendarPickerMarkup({name:"seasonStartedAt",value:data.startedAt||"",placeholder:"Selecionar data"})}</label>
+                <label>Data de conclusão${calendarPickerMarkup({name:"seasonEndedAt",value:data.endedAt||"",placeholder:"Selecionar data"})}</label>
+                <div class="season-save-row"><button type="button" class="btn-save-season-data" data-season="${sn}">Salvar temporada</button><span class="meta season-save-status" aria-live="polite"></span></div>
               </div>
-            </div>`;
+              ${finished ? `<small class="season-finished-note">Temporada concluída nesta experiência.</small>` : ""}
+              ${fbUser ? `<div class="season-bulk-actions"><button type="button" class="btn-toggle-season-watched" data-season="${sn}">${finished?"Desmarcar temporada":"Marcar temporada como assistida"}</button></div>` : ""}
+              <div class="episodes-grid">${episodes.map(ep=>`<button type="button" class="ep-btn ${watched.has(ep.number)?"watched":""}" ${!fbUser?"disabled":""} data-season="${sn}" data-ep="${ep.number}" title="Episódio ${ep.number}">E${ep.number}</button>`).join("")}</div>
+            </div>
+          </section>`;
         }).join("")}
       </div>`;
 
-    // Troca a experiência sem misturar o progresso de temporadas.
     container.querySelector("#season-journey-select")?.addEventListener("change", e => loadSeriesSeasons(showId, savedNote, e.target.value));
 
-    // Temporadas começam recolhidas; o cabeçalho abre/fecha o conteúdo.
-    container.querySelectorAll("[data-toggle-season]").forEach(header => {
-      header.addEventListener("click", () => {
-        const content = header.closest(".season-block")?.querySelector(".season-content");
-        if (!content) return;
-        content.hidden = !content.hidden;
-        header.setAttribute("aria-expanded", String(!content.hidden));
-      });
-    });
+    container.querySelectorAll("[data-toggle-season]").forEach(header => header.addEventListener("click", () => {
+      const content = header.closest(".season-block")?.querySelector(".season-content");
+      if (!content) return;
+      content.hidden = !content.hidden;
+      header.setAttribute("aria-expanded", String(!content.hidden));
+    }));
 
-    // Marca ou desmarca todos os episódios de uma temporada de uma só vez.
-    container.querySelectorAll(".btn-toggle-season-watched").forEach(btn => {
-      btn.addEventListener("click", async () => {
-        const sNum = btn.dataset.season;
-        const block = btn.closest(".season-block");
-        const episodeButtons = [...block.querySelectorAll(".ep-btn")];
-        const sSaved = savedSeasons[sNum] = savedSeasons[sNum] || { watchedEpisodes: [] };
-        const allWatched = episodeButtons.length > 0 && episodeButtons.every(ep => ep.classList.contains("watched"));
-        const next = allWatched ? [] : episodeButtons.map(ep => Number(ep.dataset.ep));
-        sSaved.watchedEpisodes = next;
-        episodeButtons.forEach(ep => ep.classList.toggle("watched", !allWatched));
-        const count = next.length, total = episodeButtons.length, pct = total ? Math.round(count / total * 100) : 0;
-        const meta = block.querySelector(".season-header-meta > span");
-        const bar = block.querySelector(".season-progress-bar i");
-        if (meta) meta.textContent = `${count} / ${total} eps (${pct}%)`;
-        if (bar) bar.style.width = `${pct}%`;
-        btn.textContent = allWatched ? "Marcar temporada como assistida" : "Desmarcar temporada";
-        btn.disabled = true;
-        try { if (window.hubFB && fbUser) await saveSeasonData(); }
-        catch (err) { console.warn("Erro ao atualizar temporada:", err); btn.textContent = "Erro ao salvar — tente novamente"; }
-        finally { btn.disabled = false; }
-      });
-    });
+    const refreshSeasonProgress = (block, data) => {
+      const buttons = [...block.querySelectorAll(".ep-btn")], total = buttons.length;
+      const count = (data.watchedEpisodes || []).length, pct = total ? Math.round(count/total*100) : 0;
+      const finished = total > 0 && count >= total;
+      const meta = block.querySelector(".season-header-meta > span"), bar = block.querySelector(".season-progress-bar i");
+      if (meta) meta.textContent = `${count} / ${total} eps (${pct}%)`;
+      if (bar) bar.style.width = `${pct}%`;
+      const bulk = block.querySelector(".btn-toggle-season-watched");
+      if (bulk) bulk.textContent = finished ? "Desmarcar temporada" : "Marcar temporada como assistida";
+      return {total, finished};
+    };
 
-    // Eventos: Marcar/Desmarcar episódio ao clicar
-    container.querySelectorAll(".ep-btn").forEach(btn => {
-      btn.addEventListener("click", async () => {
-        const sNum  = btn.dataset.season;
-        const epNum = Number(btn.dataset.ep);
-        const sSaved = savedSeasons[sNum] = savedSeasons[sNum] || { watchedEpisodes: [] };
-        const watchedSet = new Set(sSaved.watchedEpisodes || []);
+    // Salva nota e datas de cada temporada, dentro da experiência selecionada.
+    container.querySelectorAll(".btn-save-season-data").forEach(btn => btn.addEventListener("click", async () => {
+      const sn = btn.dataset.season, block = btn.closest(".season-block"), status = block.querySelector(".season-save-status");
+      const raw = block.querySelector(".season-score-input").value.trim();
+      const score = raw === "" ? null : Number(raw);
+      if (score !== null && (!Number.isInteger(score) || score < 0 || score > 100)) { status.textContent = "A nota deve ser um número inteiro entre 0 e 100."; return; }
+      const data = savedSeasons[sn] = savedSeasons[sn] || {watchedEpisodes:[]};
+      if (score === null) delete data.score; else data.score = score;
+      data.startedAt = block.querySelector('[name="seasonStartedAt"]').value;
+      data.endedAt = block.querySelector('[name="seasonEndedAt"]').value;
+      delete data.endedAtAuto;
+      status.textContent = "Salvando…"; btn.disabled = true;
+      try {
+        await saveSeasonData();
+        const title = block.querySelector(".season-title");
+        const scoreBadge = score !== null ? ` · ${badge(score)}` : "";
+        title.innerHTML = `<strong>Temporada ${sn}</strong>${scoreBadge}`;
+        status.textContent = "Temporada salva!";
+      } catch (err) { status.textContent = `Erro ao salvar: ${err.message || err.code}`; }
+      finally { btn.disabled = false; }
+    }));
 
-        if (watchedSet.has(epNum)) {
-          watchedSet.delete(epNum);
-          btn.classList.remove("watched");
-        } else {
-          watchedSet.add(epNum);
-          btn.classList.add("watched");
-        }
-        sSaved.watchedEpisodes = [...watchedSet];
+    // Marcar/desmarcar a temporada inteira também atualiza automaticamente a data de conclusão.
+    container.querySelectorAll(".btn-toggle-season-watched").forEach(btn => btn.addEventListener("click", async () => {
+      const sn = btn.dataset.season, block = btn.closest(".season-block"), buttons = [...block.querySelectorAll(".ep-btn")];
+      if (!buttons.length) return;
+      const data = savedSeasons[sn] = savedSeasons[sn] || {watchedEpisodes:[]};
+      const wasFinished = buttons.every(ep => ep.classList.contains("watched"));
+      const previous = [...(data.watchedEpisodes || [])];
+      data.watchedEpisodes = wasFinished ? [] : buttons.map(ep => Number(ep.dataset.ep));
+      if (!wasFinished) {
+        if (!data.startedAt) data.startedAt = localDateISO();
+        if (!data.endedAt || data.endedAtAuto) { data.endedAt = localDateISO(); data.endedAtAuto = true; }
+      } else if (data.endedAtAuto) { data.endedAt = ""; data.endedAtAuto = false; }
+      buttons.forEach(ep => ep.classList.toggle("watched", !wasFinished));
+      btn.disabled = true;
+      try {
+        await saveSeasonData();
+        refreshSeasonProgress(block, data);
+        const start = block.querySelector('[name="seasonStartedAt"]'), end = block.querySelector('[name="seasonEndedAt"]');
+        if (start) setCalendarValue(start.closest(".hub-calendar"), data.startedAt || "");
+        if (end) setCalendarValue(end.closest(".hub-calendar"), data.endedAt || "");
+        btn.textContent = wasFinished ? "Marcar temporada como assistida" : "Desmarcar temporada";
+      } catch (err) {
+        data.watchedEpisodes = previous;
+        buttons.forEach(ep => ep.classList.toggle("watched", previous.includes(Number(ep.dataset.ep))));
+        refreshSeasonProgress(block, data);
+        alert(`Não foi possível salvar a temporada: ${err.message || err.code}`);
+      } finally { btn.disabled = false; }
+    }));
 
-        if (window.hubFB && fbUser) {
-          try {
-            await saveSeasonData();
-          } catch (err) {
-            console.warn("Erro ao salvar episódio:", err);
-          }
-        }
-        // Atualiza contadores visuais da temporada
-        const seasonBlock = btn.closest(".season-block");
-        const totalEps = seasonBlock.querySelectorAll(".ep-btn").length;
-        const count = watchedSet.size;
-        const pct = totalEps ? Math.round((count / totalEps) * 100) : 0;
-        const metaSpan = seasonBlock.querySelector(".season-header-meta span");
-        const barI = seasonBlock.querySelector(".season-progress-bar i");
-        if (metaSpan) metaSpan.textContent = `${count} / ${totalEps} eps (${pct}%)`;
-        if (barI) barI.style.width = `${pct}%`;
-        const bulk = seasonBlock.querySelector(".btn-toggle-season-watched");
-        if (bulk) bulk.textContent = count === totalEps ? "Desmarcar temporada" : "Marcar temporada como assistida";
-      });
-    });
-
-    // Eventos: Salvar nota de temporada
-    container.querySelectorAll(".btn-save-season-score").forEach(btn => {
-      btn.addEventListener("click", async () => {
-        const sNum = btn.dataset.season;
-        const prompt = btn.closest(".season-score-prompt");
-        const input = prompt.querySelector(".season-score-input");
-        const statusEl = prompt.querySelector(`.status-season-${sNum}`);
-        const scoreVal = Math.min(100, Math.max(0, Number(input.value) || 0));
-
-        statusEl.textContent = "Salvando…";
-        savedSeasons[sNum] = savedSeasons[sNum] || {};
-        savedSeasons[sNum].score = scoreVal;
-
-        if (window.hubFB && fbUser) {
-          try {
-            await saveSeasonData();
-            statusEl.textContent = "Salvo!";
-          } catch (err) {
-            statusEl.textContent = "Erro: " + (err.message || err.code);
-          }
-        }
-      });
-    });
-
+    // Marcação individual: primeira visualização registra início; conclusão de todos os episódios registra término.
+    container.querySelectorAll(".ep-btn").forEach(btn => btn.addEventListener("click", async () => {
+      const sn = btn.dataset.season, epNum = Number(btn.dataset.ep), block = btn.closest(".season-block");
+      const data = savedSeasons[sn] = savedSeasons[sn] || {watchedEpisodes:[]};
+      const set = new Set(data.watchedEpisodes || []), wasWatched = set.has(epNum);
+      if (wasWatched) set.delete(epNum); else set.add(epNum);
+      const previous = [...(data.watchedEpisodes || [])];
+      data.watchedEpisodes = [...set];
+      if (!wasWatched && !data.startedAt) data.startedAt = localDateISO();
+      const total = block.querySelectorAll(".ep-btn").length;
+      if (total > 0 && set.size >= total) {
+        if (!data.endedAt || data.endedAtAuto) { data.endedAt = localDateISO(); data.endedAtAuto = true; }
+      } else if (data.endedAtAuto) { data.endedAt = ""; data.endedAtAuto = false; }
+      btn.classList.toggle("watched", !wasWatched);
+      btn.disabled = true;
+      try {
+        await saveSeasonData();
+        refreshSeasonProgress(block, data);
+        const start = block.querySelector('[name="seasonStartedAt"]'), end = block.querySelector('[name="seasonEndedAt"]');
+        if (start) setCalendarValue(start.closest(".hub-calendar"), data.startedAt || "");
+        if (end) setCalendarValue(end.closest(".hub-calendar"), data.endedAt || "");
+      } catch (err) {
+        data.watchedEpisodes = previous;
+        btn.classList.toggle("watched", wasWatched);
+        refreshSeasonProgress(block, data);
+        alert(`Não foi possível salvar o episódio: ${err.message || err.code}`);
+      } finally { btn.disabled = false; }
+    }));
   } catch (e) {
     container.innerHTML = `<div class="msg err">Não foi possível carregar as temporadas (${esc(e.message)}).</div>`;
   }
