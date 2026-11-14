@@ -5,7 +5,7 @@
    CONTROLE DE VERSÃO:
    Sempre que modificar este arquivo incremente HUB_VERSION em +1.
    ===================================================================== */
-const HUB_VERSION = 31;
+const HUB_VERSION = 32;
 window.HUB_VERSION = HUB_VERSION;
 document.getElementById("project-version").textContent = `v${HUB_VERSION}`;
 
@@ -24,6 +24,7 @@ let shows      = [];   // catálogo de séries
 let watching   = [];   // em andamento (filmes + séries)
 let activeItem = null;
 let modalRequestToken = 0; // item aberto no modal
+let diaryRequestToken = 0; // impede respostas antigas de sobrescreverem experiências/diário
 let showSeasonsCache = new Map(); // cache das temporadas de séries
 let tmdbSearchResults = [];
 const TMDB_WORKER_URL = "https://hub-filmes-series.world-testaocenter790.workers.dev";
@@ -342,6 +343,7 @@ const wideCard = item => {
 
 async function openItem(id, type, previewData = null) {
   const requestToken = ++modalRequestToken;
+  ++diaryRequestToken;
   const d = $("dlg");
   // Abra imediatamente: a busca de metadados/notas não deve bloquear a interação.
   d.innerHTML = `<div class="msg modal-loading"><span class="loading-spinner"></span> Abrindo detalhes…</div>`;
@@ -928,13 +930,31 @@ function renderDiaryEntries(id, type, logs) {
 }
 
 async function loadDiary(id, type) {
-  $("diary-content").className = "msg";
-  $("diary-content").textContent = "Carregando diário…";
+  const requestToken = ++diaryRequestToken;
+  const diaryRoot = $("diary-content");
+  const experiencesRoot = $("experiences-content");
+  if (diaryRoot) {
+    diaryRoot.className = "msg";
+    diaryRoot.textContent = "Carregando diário…";
+  }
+  if (experiencesRoot) {
+    experiencesRoot.className = "msg";
+    experiencesRoot.textContent = "Atualizando experiências…";
+  }
   try {
+    // getItemLogs consulta o servidor (com fallback offline). O token impede que
+    // uma leitura iniciada antes de uma alteração/tabulação sobrescreva dados novos.
     const logs = await hubFB.getItemLogs(id, type);
-    if ($("dlg").open) renderDiaryEntries(id, type, logs);
+    const sameItemIsOpen = $("dlg")?.open &&
+      String(activeItem?.id) === String(id) &&
+      String(activeItem?.type) === String(type);
+    if (requestToken !== diaryRequestToken || !sameItemIsOpen) return;
+    renderDiaryEntries(id, type, logs);
   } catch (err) {
-    $("diary-content").innerHTML = `<div class="msg err">Não consegui carregar o diário (${esc(err.code || err.message)}).</div>`;
+    if (requestToken !== diaryRequestToken) return;
+    const message = `Não consegui atualizar as experiências e o diário (${esc(err.code || err.message)}).`;
+    if (experiencesRoot) experiencesRoot.innerHTML = `<div class="msg err">${message}</div>`;
+    if (diaryRoot) diaryRoot.innerHTML = `<div class="msg err">${message}</div>`;
   }
 }
 

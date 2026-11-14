@@ -2148,3 +2148,20 @@ body.discover-mode .top { padding-top:14px; padding-bottom:14px; }
   align-self: center;
   margin-top: -2px;
 }
+
+
+/* V41 — calendário alinhado à borda direita e ação de temporada centralizada */
+.season-rating-grid .hub-calendar-popover {
+  left: auto;
+  right: 0;
+  width: min(292px, calc(100vw - 32px));
+}
+.season-bulk-actions {
+  align-items: center;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+.season-bulk-actions button {
+  transform: translateY(-9px);
+  margin-bottom: -9px;
+}
