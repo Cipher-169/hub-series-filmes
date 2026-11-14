@@ -444,7 +444,7 @@ function renderStats(){
       const c=i.originCountry||i.origin_country||i.production_countries||i.productionCountries||i.country;
       if(Array.isArray(c))c.forEach(v=>countryCounts[v]=(countryCounts[v]||0)+1);else if(c)countryCounts[c]=(countryCounts[c]||0)+1;
     });
-    const topGenres=Object.entries(genreCounts).sort((a,b)=>b[1]-a[1]).slice(0,7),topCountries=Object.entries(countryCounts).sort((a,b)=>b[1]-a[1]).slice(0,6);
+    const topGenres=Object.entries(genreCounts).sort((a,b)=>b[1]-a[1]).slice(0,7),topCountries=Object.entries(countryCounts).sort((a,b)=>b[1]-a[1]).slice(0,6).map(([country,count])=>[translateTmdbCountry(country),count]);
     const seasonStats=journeys.reduce((a,j)=>{
       let map=j.seasons;if(typeof map==="string"){try{map=JSON.parse(map)}catch{map={}}}
       if(Array.isArray(map))map=Object.fromEntries(map.map((v,i)=>[String(v?.number??i+1),v]));
@@ -1198,7 +1198,11 @@ function renderDiaryEntries(id, type, logs) {
         <button type="button" class="journey-delete-btn" data-delete-journey="${esc(j.id)}">Excluir experiência</button></div>
         <form class="journey-inline-form hidden" data-journey-form="${esc(j.id)}">
           <div class="journey-edit-grid">
-            <label>Status<select name="status"><option value="in_progress" ${j.status==="in_progress"?"selected":""}>Em andamento</option><option value="paused" ${j.status==="paused"?"selected":""}>Pausada</option><option value="completed" ${j.status==="completed"?"selected":""}>Concluída</option><option value="abandoned" ${j.status==="abandoned"?"selected":""}>Abandonada</option></select></label>
+            <label class="journey-status-field">Status<div class="diary-select journey-status-select">
+              <select name="status" class="journey-status-native" tabindex="-1" aria-hidden="true"><option value="in_progress" ${j.status==="in_progress"?"selected":""}>Em andamento</option><option value="paused" ${j.status==="paused"?"selected":""}>Pausada</option><option value="completed" ${j.status==="completed"?"selected":""}>Concluída</option><option value="abandoned" ${j.status==="abandoned"?"selected":""}>Abandonada</option></select>
+              <button type="button" class="diary-select-trigger journey-status-trigger" aria-haspopup="listbox" aria-expanded="false"><span class="journey-status-value">${statusText[j.status]||"Em andamento"}</span><span class="diary-select-chevron" aria-hidden="true">⌄</span></button>
+              <div class="diary-select-menu journey-status-menu" role="listbox" aria-label="Status da experiência" hidden>${[["in_progress","Em andamento"],["paused","Pausada"],["completed","Concluída"],["abandoned","Abandonada"]].map(([value,text])=>`<button type="button" class="diary-select-option ${j.status===value?"is-selected":""}" role="option" aria-selected="${j.status===value}" data-journey-status-option="${value}">${text}</button>`).join("")}</div>
+            </div></label>
             <label>Nota individual (0–100)<div class="custom-number"><input name="score" type="number" min="0" max="100" step="1" value="${Number(j.score)>0?Number(j.score):""}" placeholder="Não avaliada"><span class="number-stepper"><button type="button" data-number-step="-1" aria-label="Diminuir nota">−</button><button type="button" data-number-step="1" aria-label="Aumentar nota">+</button></span></div></label>
             <label>Data de início${calendarPickerMarkup({name:"startedAt",value:j.startedAt||""})}<small>Deixe em branco se não souber.</small></label><label>Data de conclusão${calendarPickerMarkup({name:"endedAt",value:j.endedAt||""})}<small>Informe quando terminou; pode ficar em branco.</small></label>
             <label class="journey-edit-wide">Observações desta experiência<textarea name="notes" rows="4" maxlength="10000" placeholder="Anotações sobre esta jornada…">${esc(j.notes||"")}</textarea></label>
@@ -1250,6 +1254,34 @@ function renderDiaryEntries(id, type, logs) {
 
   const experienceRoot = $("experiences-content");
   experienceRoot.onclick = async e => {
+    const statusTrigger = e.target.closest(".journey-status-trigger");
+    if (statusTrigger) {
+      const picker = statusTrigger.closest(".journey-status-select");
+      const menu = picker?.querySelector(".journey-status-menu");
+      const opening = !!menu?.hidden;
+      experienceRoot.querySelectorAll(".journey-status-menu").forEach(other => { other.hidden = true; other.closest(".journey-status-select")?.querySelector(".journey-status-trigger")?.setAttribute("aria-expanded", "false"); });
+      if (menu) { menu.hidden = !opening; statusTrigger.setAttribute("aria-expanded", String(opening)); }
+      return;
+    }
+    const statusOption = e.target.closest("[data-journey-status-option]");
+    if (statusOption) {
+      const picker = statusOption.closest(".journey-status-select");
+      const select = picker?.querySelector('select[name="status"]');
+      const trigger = picker?.querySelector(".journey-status-trigger");
+      if (select) select.value = statusOption.dataset.journeyStatusOption;
+      const value = picker?.querySelector(".journey-status-value");
+      if (value) value.textContent = statusOption.textContent.trim();
+      picker?.querySelectorAll("[data-journey-status-option]").forEach(option => {
+        const selected = option === statusOption;
+        option.classList.toggle("is-selected", selected);
+        option.setAttribute("aria-selected", String(selected));
+      });
+      const menu = picker?.querySelector(".journey-status-menu");
+      if (menu) menu.hidden = true;
+      trigger?.setAttribute("aria-expanded", "false");
+      trigger?.focus();
+      return;
+    }
     const stepButton = e.target.closest("[data-number-step]");
     if (stepButton) {
       const input = stepButton.closest(".custom-number")?.querySelector("input");
@@ -1262,6 +1294,9 @@ function renderDiaryEntries(id, type, logs) {
         input.dispatchEvent(new Event("change", { bubbles: true }));
       }
       return;
+    }
+    if (!e.target.closest(".journey-status-select")) {
+      experienceRoot.querySelectorAll(".journey-status-menu").forEach(menu => { menu.hidden = true; menu.closest(".journey-status-select")?.querySelector(".journey-status-trigger")?.setAttribute("aria-expanded", "false"); });
     }
     const toggle = e.target.closest("[data-toggle-journey]");
     if (toggle) {

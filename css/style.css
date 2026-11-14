@@ -2640,3 +2640,15 @@ body.discover-mode .top { padding-top:14px; padding-bottom:14px; }
   background:rgba(211,177,125,.34) !important;
   color:#fff3dc !important;
 }
+
+
+/* V68 — seletor de status das experiências com o mesmo padrão visual do Diário */
+.journey-status-field{position:relative;z-index:5}
+.journey-status-select{margin-top:6px}
+.journey-status-native{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important;border:0!important;opacity:0!important;pointer-events:none!important}
+.journey-status-select .journey-status-trigger{background:#171613!important;color:#eee2d0!important;border:1px solid rgba(220,198,160,.38)!important}
+.journey-status-select .journey-status-trigger:hover,.journey-status-select .journey-status-trigger[aria-expanded="true"]{background:#29251f!important;border-color:#c9a875!important;color:#fff3dc!important}
+.journey-status-select .journey-status-menu{z-index:80}
+.journey-status-select .journey-status-option{color:#eee2d0}
+.journey-status-select .journey-status-option.is-selected{background:rgba(211,177,125,.22);color:#ffe0ad;font-weight:700}
+.journey-status-select .journey-status-option.is-selected:before{content:"✓";display:inline-block;width:19px;color:#e6bf82}
