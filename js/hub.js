@@ -918,7 +918,13 @@ async function loadSeriesSeasons(showId, savedNote, selectedJourneyId = "") {
         ${seasonsList.map(season => {
           const sn = String(season.number), data = savedSeasons[sn] || {};
           const rawSeasonName = String(season.name || "").trim();
-          const hasCustomSeasonName = rawSeasonName && !/^(temporada|season)\\s*\\d+$/i.test(rawSeasonName);
+          const normalizeLabel = value => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("pt-BR").replace(/\s+/g, " ").trim();
+          const normalizedSeasonName = normalizeLabel(rawSeasonName);
+          const normalizedSeriesTitle = normalizeLabel(activeItem?.title || "");
+          const isGenericSeasonName = /^(temporada|season)\s*0*\d+$/i.test(normalizedSeasonName);
+          const matchesSeriesTitle = normalizedSeriesTitle && normalizedSeasonName === normalizedSeriesTitle;
+          const isSeriesTitleWithNumber = normalizedSeriesTitle && normalizedSeasonName.startsWith(normalizedSeriesTitle) && /^\s*(?:[-:–—]\s*)?0*\d+$/.test(normalizedSeasonName.slice(normalizedSeriesTitle.length));
+          const hasCustomSeasonName = Boolean(rawSeasonName) && !isGenericSeasonName && !matchesSeriesTitle && !isSeriesTitleWithNumber;
           const customSeasonName = hasCustomSeasonName ? ` — ${esc(rawSeasonName)}` : "";
           const episodes = season.episodes || Array.from({length:season.episode_count||0},(_,i)=>({number:i+1}));
           const watched = new Set(data.watchedEpisodes || []), total = episodes.length || season.episode_count || 0;
@@ -983,8 +989,9 @@ async function loadSeriesSeasons(showId, savedNote, selectedJourneyId = "") {
       try {
         await saveSeasonData();
         const title = block.querySelector(".season-title");
+        const seasonHeading = block.querySelector(".season-title strong")?.textContent || `Temporada ${sn}`;
         const scoreBadge = score !== null ? ` · ${badge(score)}` : "";
-        title.innerHTML = `<strong>Temporada ${sn}</strong>${scoreBadge}`;
+        title.innerHTML = `<strong>${esc(seasonHeading)}</strong>${scoreBadge}`;
         status.textContent = "Temporada salva!";
       } catch (err) { status.textContent = `Erro ao salvar: ${err.message || err.code}`; }
       finally { btn.disabled = false; }
