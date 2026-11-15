@@ -917,13 +917,16 @@ async function loadSeriesSeasons(showId, savedNote, selectedJourneyId = "") {
       <div class="seasons-accordion">
         ${seasonsList.map(season => {
           const sn = String(season.number), data = savedSeasons[sn] || {};
+          const rawSeasonName = String(season.name || "").trim();
+          const hasCustomSeasonName = rawSeasonName && !/^(temporada|season)\\s*\\d+$/i.test(rawSeasonName);
+          const customSeasonName = hasCustomSeasonName ? ` — ${esc(rawSeasonName)}` : "";
           const episodes = season.episodes || Array.from({length:season.episode_count||0},(_,i)=>({number:i+1}));
           const watched = new Set(data.watchedEpisodes || []), total = episodes.length || season.episode_count || 0;
           const count = watched.size, pct = total ? Math.round(count/total*100) : 0, finished = total > 0 && count >= total;
           const scoreValue = data.score === 0 || data.score ? Number(data.score) : "";
           return `<section class="season-block" data-season="${sn}">
             <button type="button" class="season-header" data-toggle-season="${sn}" aria-expanded="false" aria-controls="season-content-${sn}">
-              <span class="season-title"><strong>Temporada ${sn}</strong>${scoreValue !== "" ? ` · ${badge(scoreValue)}` : ""}</span>
+              <span class="season-title"><strong>Temporada ${sn}${customSeasonName}</strong>${scoreValue !== "" ? ` · ${badge(scoreValue)}` : ""}</span>
               <span class="season-header-meta"><span>${count} / ${total} eps (${pct}%)</span><span class="season-progress-bar"><i style="width:${pct}%"></i></span><span class="season-chevron" aria-hidden="true">⌄</span></span>
             </button>
             <div class="season-content" id="season-content-${sn}" hidden>
