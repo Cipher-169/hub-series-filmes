@@ -2652,3 +2652,20 @@ body.discover-mode .top { padding-top:14px; padding-bottom:14px; }
 .journey-status-select .journey-status-option{color:#eee2d0}
 .journey-status-select .journey-status-option.is-selected{background:rgba(211,177,125,.22);color:#ffe0ad;font-weight:700}
 .journey-status-select .journey-status-option.is-selected:before{content:"✓";display:inline-block;width:19px;color:#e6bf82}
+
+/* V69 — campos de temporada e episódio no Diário: alinhamento e seletor consistente */
+.diary-form .diary-episode-fields {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 110px;
+  gap: 12px;
+  align-items: end;
+  min-width: 0;
+}
+.diary-form .diary-season-field,
+.diary-form .diary-episode-field { min-width: 0; }
+.diary-form .diary-season-select { z-index: 6; }
+.diary-form .diary-episode-field input { box-sizing: border-box; width: 100%; min-width: 0; }
+@media (max-width: 560px) {
+  .diary-form .diary-episode-fields { grid-template-columns: minmax(0, 1fr) 92px; gap: 9px; }
+}
