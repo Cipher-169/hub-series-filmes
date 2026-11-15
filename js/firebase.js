@@ -396,13 +396,14 @@ window.hubFB = {
     await window.hubFB.syncOverallStatus(old.itemId, old.type);
   },
 
-  addItemLog: async ({ itemId, type, journeyId, episode, watchedAt, comment }) => {
+  addItemLog: async ({ itemId, type, journeyId, episode, seasonNumber, watchedAt, comment }) => {
     requireOwner();
     if (!itemId || !["movie", "show"].includes(type)) throw new Error("Dados inválidos para o registro.");
     const payload = {
       itemId: String(itemId), type,
       ...(journeyId ? { journeyId: String(journeyId) } : {}),
       ...(episode != null ? { episode: Number(episode) } : {}),
+      ...(seasonNumber != null && type === "show" ? { seasonNumber: Number(seasonNumber) } : {}),
       watchedAt: watchedAt ?? "",
       comment: String(comment ?? ""),
       createdAt: serverTimestamp(),
@@ -420,6 +421,7 @@ window.hubFB = {
     if (Object.prototype.hasOwnProperty.call(data, "comment")) payload.comment = String(data.comment ?? "");
     if (Object.prototype.hasOwnProperty.call(data, "watchedAt")) payload.watchedAt = String(data.watchedAt ?? "");
     if (Object.prototype.hasOwnProperty.call(data, "episode")) payload.episode = Number(data.episode);
+    if (Object.prototype.hasOwnProperty.call(data, "seasonNumber")) payload.seasonNumber = Number(data.seasonNumber);
     if (Object.prototype.hasOwnProperty.call(data, "journeyId")) payload.journeyId = String(data.journeyId ?? "");
     await setDoc(ref, payload, { merge: true });
     const old = snap.data();
