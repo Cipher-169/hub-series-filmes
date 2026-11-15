@@ -5,7 +5,7 @@
    CONTROLE DE VERSÃO:
    Sempre que modificar este arquivo incremente HUB_VERSION em +1.
    ===================================================================== */
-const HUB_VERSION = 36;
+const HUB_VERSION = 37;
 window.HUB_VERSION = HUB_VERSION;
 document.getElementById("project-version").textContent = `v${HUB_VERSION}`;
 
@@ -13,6 +13,18 @@ document.getElementById("project-version").textContent = `v${HUB_VERSION}`;
 const $   = id => document.getElementById(id);
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const bg  = u => u ? `style="background-image:url('${u}')"` : "";
+
+function seasonCustomName(season, seriesTitle = "") {
+  const raw = String(season?.name || "").trim();
+  if (!raw) return "";
+  const norm = value => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("pt-BR").replace(/\s+/g, " ").trim();
+  const name = norm(raw), title = norm(seriesTitle);
+  if (/^(temporada|season)\s*0*\d+$/i.test(name)) return "";
+  if (title && name === title) return "";
+  if (title && name.startsWith(title) && /^\s*(?:[-:–—]\s*)?0*\d+$/.test(name.slice(title.length))) return "";
+  return raw;
+}
+
 
 /* ---------- Estado global ---------- */
 let tab        = "agora";
@@ -917,15 +929,8 @@ async function loadSeriesSeasons(showId, savedNote, selectedJourneyId = "") {
       <div class="seasons-accordion">
         ${seasonsList.map(season => {
           const sn = String(season.number), data = savedSeasons[sn] || {};
-          const rawSeasonName = String(season.name || "").trim();
-          const normalizeLabel = value => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("pt-BR").replace(/\s+/g, " ").trim();
-          const normalizedSeasonName = normalizeLabel(rawSeasonName);
-          const normalizedSeriesTitle = normalizeLabel(activeItem?.title || "");
-          const isGenericSeasonName = /^(temporada|season)\s*0*\d+$/i.test(normalizedSeasonName);
-          const matchesSeriesTitle = normalizedSeriesTitle && normalizedSeasonName === normalizedSeriesTitle;
-          const isSeriesTitleWithNumber = normalizedSeriesTitle && normalizedSeasonName.startsWith(normalizedSeriesTitle) && /^\s*(?:[-:–—]\s*)?0*\d+$/.test(normalizedSeasonName.slice(normalizedSeriesTitle.length));
-          const hasCustomSeasonName = Boolean(rawSeasonName) && !isGenericSeasonName && !matchesSeriesTitle && !isSeriesTitleWithNumber;
-          const customSeasonName = hasCustomSeasonName ? ` — ${esc(rawSeasonName)}` : "";
+          const customName = seasonCustomName(season, activeItem?.title || "");
+          const customSeasonName = customName ? ` — ${esc(customName)}` : "";
           const episodes = season.episodes || Array.from({length:season.episode_count||0},(_,i)=>({number:i+1}));
           const watched = new Set(data.watchedEpisodes || []), total = episodes.length || season.episode_count || 0;
           const count = watched.size, pct = total ? Math.round(count/total*100) : 0, finished = total > 0 && count >= total;
@@ -1222,7 +1227,7 @@ function renderDiaryEntries(id, type, logs) {
     </section>` : `<section class="journey-panel"><h3>Minhas experiências</h3><div class="journey-list">${journeys.map(j=>`<article class="journey-card"><strong>${label(j)}</strong><small>${statusText[j.status]||j.status||""}</small></article>`).join("")}</div></section>`;
   const form = editable ? `<p class="diary-intro">Registre suas impressões ${isShow?"episódio por episódio":"sobre o filme"}.</p><form class="diary-form" id="diary-form">
     <div class="wide-field diary-journey-field"><label id="diary-journey-label">Experiência</label><select id="diary-journey" class="diary-journey-native" required tabindex="-1" aria-hidden="true">${journeys.map(j=>`<option value="${esc(j.id)}">${label(j)} — ${statusText[j.status]||"Não definido"}</option>`).join("")}</select><div class="diary-select"><button type="button" class="diary-select-trigger" aria-haspopup="listbox" aria-expanded="false" aria-labelledby="diary-journey-label diary-journey-value" ${journeys.length?"":"disabled"}><span id="diary-journey-value">${journeys.length?`${label(journeys[0])} — ${statusText[journeys[0].status]||"Não definido"}`:"Nenhuma experiência disponível"}</span><span class="diary-select-chevron" aria-hidden="true">⌄</span></button><div class="diary-select-menu" role="listbox" aria-labelledby="diary-journey-label" hidden>${journeys.map((j,i)=>`<button type="button" class="diary-select-option ${i===0?"is-selected":""}" role="option" aria-selected="${i===0}" data-journey-option="${esc(j.id)}">${label(j)} — ${statusText[j.status]||"Não definido"}</button>`).join("")}</div></div>${journeys.length?"":`<small>Inicie uma experiência em “Minhas experiências” para adicionar registros vinculados.</small>`}</div>
-    ${isShow?`<div><label for="diary-season">Temporada</label><select id="diary-season" required>${(showSeasonsCache.get(id)||[]).filter(season=>season.number>0).map(season=>`<option value="${season.number}">Temporada ${season.number}${season.name && !/^temporada\\s*\\d+$/i.test(season.name.trim()) && !/^season\\s*\\d+$/i.test(season.name.trim()) ? ` — ${esc(season.name)}` : ""}</option>`).join("") || `<option value="1">Temporada 1</option>`}</select></div><div><label for="diary-episode">Episódio</label><input id="diary-episode" type="number" min="1" step="1" value="1" required></div>`:""}
+    ${isShow?`<div class="wide-field diary-episode-fields"><div class="diary-season-field"><label id="diary-season-label">Temporada</label><select id="diary-season" class="diary-journey-native" required tabindex="-1" aria-hidden="true">${(showSeasonsCache.get(id)||[]).filter(season=>season.number>0).map(season=>`<option value="${season.number}">Temporada ${season.number}${seasonCustomName(season, activeItem?.title || "") ? ` — ${esc(seasonCustomName(season, activeItem?.title || ""))}` : ""}</option>`).join("") || `<option value="1">Temporada 1</option>`}</select><div class="diary-select diary-season-select"><button type="button" class="diary-select-trigger" aria-haspopup="listbox" aria-expanded="false" aria-labelledby="diary-season-label diary-season-value"><span id="diary-season-value">${(showSeasonsCache.get(id)||[]).filter(season=>season.number>0).length ? `Temporada ${(showSeasonsCache.get(id)||[]).filter(season=>season.number>0)[0].number}${seasonCustomName((showSeasonsCache.get(id)||[]).filter(season=>season.number>0)[0], activeItem?.title || "") ? ` — ${esc(seasonCustomName((showSeasonsCache.get(id)||[]).filter(season=>season.number>0)[0], activeItem?.title || ""))}` : ""}` : "Temporada 1"}</span><span class="diary-select-chevron" aria-hidden="true">⌄</span></button><div class="diary-select-menu" role="listbox" aria-labelledby="diary-season-label" hidden>${(showSeasonsCache.get(id)||[]).filter(season=>season.number>0).map((season,i)=>`<button type="button" class="diary-select-option ${i===0?"is-selected":""}" role="option" aria-selected="${i===0}" data-season-option="${season.number}">Temporada ${season.number}${seasonCustomName(season, activeItem?.title || "") ? ` — ${esc(seasonCustomName(season, activeItem?.title || ""))}` : ""}</button>`).join("") || `<button type="button" class="diary-select-option is-selected" role="option" aria-selected="true" data-season-option="1">Temporada 1</button>`}</div></div></div><div class="diary-episode-field"><label for="diary-episode">Episódio</label><input id="diary-episode" type="number" min="1" step="1" value="1" required></div></div>`:""}
     <div class="diary-date-field"><label for="diary-date">Data</label>${calendarPickerMarkup({id:"diary-date",value:localDateISO()})}<label class="diary-forgot-label"><input id="diary-forgot" type="checkbox"> <span>Esqueci a data</span></label></div>
     <div class="wide-field"><label for="diary-comment">Seu comentário</label><textarea id="diary-comment" maxlength="10000" placeholder="O que achou?" required></textarea></div><button type="submit" ${journeys.length?"":"disabled"}>Adicionar registro</button><span class="diary-status" id="diary-status" role="status"></span></form>` : `<p class="diary-intro">Diário público de impressões.</p>`;
   $("experiences-content").innerHTML = journeyPanel;
@@ -1258,6 +1263,37 @@ function renderDiaryEntries(id, type, logs) {
         trigger?.setAttribute("aria-expanded", "false");
       }
     }, {once:false});
+  }
+
+  // Seletor de temporada com o mesmo padrão visual do seletor de experiência.
+  const seasonPicker = $("diary-content")?.querySelector(".diary-season-select");
+  if (seasonPicker) {
+    const trigger = seasonPicker.querySelector(".diary-select-trigger");
+    const menu = seasonPicker.querySelector(".diary-select-menu");
+    const nativeSelect = $("diary-season");
+    trigger?.addEventListener("click", () => {
+      const opening = menu.hidden;
+      menu.hidden = !opening;
+      trigger.setAttribute("aria-expanded", String(opening));
+    });
+    menu?.querySelectorAll("[data-season-option]").forEach(option => option.addEventListener("click", () => {
+      nativeSelect.value = option.dataset.seasonOption;
+      $("diary-season-value").textContent = option.textContent;
+      menu.querySelectorAll(".diary-select-option").forEach(item => {
+        const selected = item === option;
+        item.classList.toggle("is-selected", selected);
+        item.setAttribute("aria-selected", String(selected));
+      });
+      menu.hidden = true;
+      trigger.setAttribute("aria-expanded", "false");
+      nativeSelect.dispatchEvent(new Event("change", {bubbles:true}));
+    }));
+    document.addEventListener("click", event => {
+      if (!seasonPicker.contains(event.target)) {
+        menu.hidden = true;
+        trigger?.setAttribute("aria-expanded", "false");
+      }
+    });
   }
 
   $("btn-new-journey")?.addEventListener("click", async ev=>{const b=ev.currentTarget;b.disabled=true;b.textContent="Criando…";try{await hubFB.createJourney({itemId:id,type});await loadCatalog();await loadDiary(id,type);}catch(err){alert(`Não foi possível iniciar a experiência: ${err.message||err.code}`);b.disabled=false;b.textContent="+ Iniciar nova experiência";}});
