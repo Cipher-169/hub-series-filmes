@@ -2503,7 +2503,8 @@ body.discover-mode .top { padding-top:14px; padding-bottom:14px; }
 
 
 /* V58 — seletor personalizado de experiência no Diário */
-.diary-journey-field{position:relative}
+.diary-journey-field{position:relative;z-index:8}
+.diary-journey-field > .diary-select{z-index:8}
 .diary-journey-native{
   position:absolute!important;width:1px!important;height:1px!important;padding:0!important;
   margin:-1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;
