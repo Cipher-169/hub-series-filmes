@@ -9,7 +9,7 @@ import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChang
 import {
   initializeFirestore, persistentLocalCache, persistentMultipleTabManager,
   collection, doc, getDoc, getDocs, getDocsFromServer, addDoc, setDoc, updateDoc, deleteDoc,
-  serverTimestamp, query, where,
+  serverTimestamp, query, where, waitForPendingWrites,
 } from "https://www.gstatic.com/firebasejs/13.2.0/firebase-firestore.js";
 
 /* ---------- Config Firebase (mesmo projeto do hub de animes) ---------- */
@@ -30,6 +30,20 @@ const db = initializeFirestore(app, {
 });
 
 const emit = (name, detail) => window.dispatchEvent(new CustomEvent(name, { detail }));
+
+// O SDK do Firestore aplica as gravações ao cache local imediatamente, mas a
+// Promise da gravação só confirma quando o servidor responde. Offline, liberamos
+// a interface após a janela de persistência local; a fila do SDK continua ativa.
+async function settleWrite(promise) {
+  if (navigator.onLine) return promise;
+  promise.catch(error => console.warn("Gravação offline pendente/recusada pelo servidor:", error));
+  await new Promise(resolve => setTimeout(resolve, 180));
+  return { pendingSync: true };
+}
+const setDocLocal = (...args) => settleWrite(setDoc(...args));
+const addDocLocal = (...args) => settleWrite(addDoc(...args));
+const updateDocLocal = (...args) => settleWrite(updateDoc(...args));
+const deleteDocLocal = (...args) => settleWrite(deleteDoc(...args));
 
 /* ---------- Helpers de caminho (coleções separadas do hub de animes) ---------- */
 const isOwner       = () => auth.currentUser?.uid === OWNER_UID;
@@ -142,7 +156,7 @@ window.hubFB = {
     const id = String(item.id);
     const type = item.mediaType === "tv" ? "show" : "movie";
     const status = ["plantowatch", "watching", "paused", "completed", "dropped"].includes(item.status) ? item.status : "plantowatch";
-    await setDoc(notePath(id, type), {
+    await setDocLocal(notePath(id, type), {
       ...item, id, itemId: id, type, inCatalog: true,
       status, addedAt: serverTimestamp()
     }, { merge: true });
@@ -159,7 +173,7 @@ window.hubFB = {
         score: 0, progressSeason: "", progressEpisode: "", notes: "",
         createdAt: serverTimestamp(),
       };
-      await addDoc(logsCol(), journey);
+      await addDocLocal(logsCol(), journey);
     }
     await cacheDelete("personal_catalog");
     await cacheDelete(`note:${type}:${id}`);
@@ -169,7 +183,7 @@ window.hubFB = {
   removeCatalogItem: async (id, type) => {
     requireOwner();
     const itemType = type === "tv" ? "show" : type;
-    await setDoc(notePath(id, itemType), { inCatalog: false, removedAt: serverTimestamp() }, { merge: true });
+    await setDocLocal(notePath(id, itemType), { inCatalog: false, removedAt: serverTimestamp() }, { merge: true });
     await cacheDelete("personal_catalog");
   },
   // Exclusão definitiva: remove o documento da biblioteca e todos os registros
@@ -181,10 +195,11 @@ window.hubFB = {
     const itemType = type === "tv" ? "show" : type;
     if (!itemId || !["movie", "show"].includes(itemType)) throw new Error("Obra inválida para exclusão.");
 
+    if (!navigator.onLine) throw new Error("A exclusão definitiva exige conexão. Você ainda pode remover o título da biblioteca offline sem apagar seus registros.");
     const relatedQuery = query(logsCol(), where("itemId", "==", itemId), where("type", "==", itemType));
     const related = await getDocsFromServer(relatedQuery);
-    for (const record of related.docs) await deleteDoc(record.ref);
-    await deleteDoc(notePath(itemId, itemType));
+    for (const record of related.docs) await deleteDocLocal(record.ref);
+    await deleteDocLocal(notePath(itemId, itemType));
 
     await Promise.all([
       cacheDelete("personal_catalog"),
@@ -203,7 +218,7 @@ window.hubFB = {
 
   saveItemNote: async (itemId, type, data) => {
     requireOwner();
-    await setDoc(notePath(itemId, type), { itemId: String(itemId), type, ...data, updatedAt: serverTimestamp() }, { merge: true });
+    await setDocLocal(notePath(itemId, type), { itemId: String(itemId), type, ...data, updatedAt: serverTimestamp() }, { merge: true });
     const old = (await cacheGet(`note:${type}:${itemId}`))?.data ?? {};
     await cacheSet(`note:${type}:${itemId}`, { ...old, ...data });
     await cacheDelete(`all_${type}_notes`);
@@ -232,7 +247,7 @@ window.hubFB = {
 
   /* Todos os registros para o painel de estatísticas. */
   getAllMediaLogs: async () => {
-    const snap = await getDocsFromServer(logsCol());
+    const snap = await getDocs(logsCol());
     return snap.docs.map(d => ({ id: d.id, ...d.data() }));
   },
 
@@ -287,7 +302,7 @@ window.hubFB = {
       score: 0, progressSeason: "", progressEpisode: "", notes: "",
       createdAt: serverTimestamp(),
     };
-    const ref = await addDoc(logsCol(), payload);
+    const ref = await addDocLocal(logsCol(), payload);
     await cacheDelete(`logs:${type}:${itemId}`);
     await window.hubFB.syncOverallStatus(itemId, type);
     return ref.id;
@@ -297,7 +312,7 @@ window.hubFB = {
     requireOwner();
     const journeys = await window.hubFB.getItemJourneys(itemId, type);
     if (!journeys.length) {
-      await setDoc(notePath(itemId, type), { status: "plantowatch", updatedAt: serverTimestamp() }, { merge: true });
+      await setDocLocal(notePath(itemId, type), { status: "plantowatch", updatedAt: serverTimestamp() }, { merge: true });
       await cacheDelete(`note:${type}:${itemId}`);
       await cacheDelete("personal_catalog");
       return "plantowatch";
@@ -307,7 +322,7 @@ window.hubFB = {
     const paused = ordered.find(j => j.status === "paused");
     const latest = ordered[0];
     const status = active ? "watching" : latest?.status === "paused" ? "paused" : latest?.status === "abandoned" ? "dropped" : latest?.status === "completed" ? "completed" : "plantowatch";
-    await setDoc(notePath(itemId, type), { status, updatedAt: serverTimestamp() }, { merge: true });
+    await setDocLocal(notePath(itemId, type), { status, updatedAt: serverTimestamp() }, { merge: true });
     await cacheDelete(`note:${type}:${itemId}`);
     await cacheDelete("personal_catalog");
     return status;
@@ -323,8 +338,8 @@ window.hubFB = {
     const related = await getDocs(q);
     // Preserva o Diário e remove somente o vínculo com a experiência excluída.
     const linked = related.docs.filter(d => d.id !== String(journeyId) && String(d.data().journeyId || "") === String(journeyId));
-    for (const log of linked) await updateDoc(log.ref, { journeyId: "", updatedAt: serverTimestamp() });
-    await deleteDoc(ref);
+    for (const log of linked) await updateDocLocal(log.ref, { journeyId: "", updatedAt: serverTimestamp() });
+    await deleteDocLocal(ref);
     await cacheDelete(`logs:${journey.type}:${journey.itemId}`);
     await cacheDelete("personal_catalog");
     await window.hubFB.syncOverallStatus(journey.itemId, journey.type);
@@ -391,7 +406,7 @@ window.hubFB = {
       payload.endedAt = old.endedAt || new Date().toISOString().slice(0,10);
       payload.endedAtSource = old.endedAt ? (old.endedAtSource || (old.endedAtAuto ? "automatic" : "legacy")) : "automatic";
     }
-    await setDoc(ref, payload, { merge: true });
+    await setDocLocal(ref, payload, { merge: true });
     await cacheDelete(`logs:${old.type}:${old.itemId}`);
     await window.hubFB.syncOverallStatus(old.itemId, old.type);
   },
@@ -408,7 +423,7 @@ window.hubFB = {
       comment: String(comment ?? ""),
       createdAt: serverTimestamp(),
     };
-    await addDoc(logsCol(), payload);
+    await addDocLocal(logsCol(), payload);
     await cacheDelete(`logs:${type}:${itemId}`);
   },
 
@@ -423,7 +438,7 @@ window.hubFB = {
     if (Object.prototype.hasOwnProperty.call(data, "episode")) payload.episode = Number(data.episode);
     if (Object.prototype.hasOwnProperty.call(data, "seasonNumber")) payload.seasonNumber = Number(data.seasonNumber);
     if (Object.prototype.hasOwnProperty.call(data, "journeyId")) payload.journeyId = String(data.journeyId ?? "");
-    await setDoc(ref, payload, { merge: true });
+    await setDocLocal(ref, payload, { merge: true });
     const old = snap.data();
     await cacheDelete(`logs:${old.type}:${old.itemId}`);
   },
@@ -438,13 +453,23 @@ window.hubFB = {
     } catch (error) {
       console.warn("Não foi possível identificar o cache do registro; a exclusão continuará.", error);
     }
-    await deleteDoc(ref);
+    await deleteDocLocal(ref);
     if (related?.type && related?.itemId != null) {
       await cacheDelete(`logs:${related.type}:${related.itemId}`);
     } else {
       await cacheDeletePrefix("logs:");
     }
   },
+
+  /* O Firestore mantém sua própria fila persistente de gravações offline. */
+  syncNow: async () => {
+    requireOwner();
+    if (!navigator.onLine) throw new Error("Sem conexão com a internet.");
+    await waitForPendingWrites(db);
+    await Promise.all([cacheDelete("personal_catalog"), cacheDelete("all_movie_notes"), cacheDelete("all_show_notes")]);
+    return window.hubFB.getCatalog({ refresh: true });
+  },
+  isOnline: () => navigator.onLine,
 };
 
 /* ---------- Observer de autenticação ---------- */

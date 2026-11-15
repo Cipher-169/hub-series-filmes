@@ -4,6 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#171613">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="manifest.json">
 <meta name="description" content="NEXUS — seu espaço pessoal para descobrir, acompanhar e avaliar filmes e séries.">
 <title>NEXUS — Filmes &amp; Séries</title>
 <link rel="icon" href="favicon.ico" sizes="any">
@@ -38,7 +42,7 @@
 
 <!-- ============ SHELL ============ -->
 <div class="wrap">
-  <p class="sync-status" id="sync-status" role="status">Biblioteca pessoal armazenada no Firebase.</p>
+  <div class="offline-toolbar"><p class="sync-status" id="sync-status" role="status">Biblioteca pessoal armazenada no Firebase.</p><div class="offline-actions"><span id="connection-status" class="connection-status" role="status">Verificando conexão…</span><button type="button" id="btn-sync-now" class="offline-action-btn">Sincronizar</button><button type="button" id="btn-install-pwa" class="offline-action-btn" hidden>Instalar app</button></div></div>
 
   <p class="meta" id="me"></p>
 
@@ -85,7 +89,10 @@
 </footer>
 
 <!-- ============ SCRIPTS ============ -->
-<script src="js/hub.js?v=42"></script>
-<script type="module" src="js/firebase.js?v=41"></script>
+<script>
+if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("./service-worker.js").catch(err => console.warn("PWA indisponível:", err)));
+</script>
+<script src="js/hub.js?v=43"></script>
+<script type="module" src="js/firebase.js?v=42"></script>
 </body>
 </html>

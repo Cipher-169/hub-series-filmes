@@ -5,7 +5,7 @@
    CONTROLE DE VERSÃO:
    Sempre que modificar este arquivo incremente HUB_VERSION em +1.
    ===================================================================== */
-const HUB_VERSION = 37;
+const HUB_VERSION = 38;
 window.HUB_VERSION = HUB_VERSION;
 document.getElementById("project-version").textContent = `v${HUB_VERSION}`;
 
@@ -41,6 +41,51 @@ let seriesSeasonsRequestToken = 0; // impede renderização de temporadas com ex
 let showSeasonsCache = new Map(); // cache das temporadas de séries
 let tmdbSearchResults = [];
 const TMDB_WORKER_URL = "https://hub-filmes-series.world-testaocenter790.workers.dev";
+
+/* Cache persistente dos metadados TMDB já consultados. */
+const TMDB_CACHE_DB = "nexus-tmdb-offline-v1";
+let tmdbCacheDbPromise;
+function openTmdbCache() {
+  if (!tmdbCacheDbPromise) tmdbCacheDbPromise = new Promise((resolve, reject) => {
+    const request = indexedDB.open(TMDB_CACHE_DB, 1);
+    request.onupgradeneeded = () => { if (!request.result.objectStoreNames.contains("responses")) request.result.createObjectStore("responses"); };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+  return tmdbCacheDbPromise;
+}
+async function readTmdbCache(key) {
+  try { const db = await openTmdbCache(); return await new Promise((resolve, reject) => { const req = db.transaction("responses", "readonly").objectStore("responses").get(key); req.onsuccess = () => resolve(req.result || null); req.onerror = () => reject(req.error); }); } catch { return null; }
+}
+async function writeTmdbCache(key, data) {
+  try { const db = await openTmdbCache(); await new Promise((resolve, reject) => { const tx = db.transaction("responses", "readwrite"); tx.objectStore("responses").put({data, savedAt:Date.now()}, key); tx.oncomplete = resolve; tx.onerror = () => reject(tx.error); }); } catch (error) { console.warn("Não foi possível guardar metadados TMDB localmente", error); }
+}
+async function fetchTmdbJson(path, options = {}) {
+  const url = path.startsWith("http") ? path : `${TMDB_WORKER_URL}${path}`;
+  const cached = await readTmdbCache(url);
+  try {
+    const response = await fetch(url, options);
+    if (!response.ok) throw new Error(`TMDB/Worker respondeu com HTTP ${response.status}`);
+    const data = await response.json();
+    await writeTmdbCache(url, data);
+    return { ok:true, status:response.status, json:async()=>data };
+  } catch (error) {
+    if (cached?.data) return { ok:true, status:200, offline:true, json:async()=>cached.data };
+    throw error;
+  }
+}
+function warmTmdbImages(urls) {
+  const unique = [...new Set((urls || []).filter(url => typeof url === "string" && url.startsWith("https://image.tmdb.org/")))];
+  if (!unique.length) return;
+  const message = {type:"CACHE_TMDB_IMAGES", urls:unique};
+  if (navigator.serviceWorker?.controller) navigator.serviceWorker.controller.postMessage(message);
+  else navigator.serviceWorker?.ready.then(registration => registration.active?.postMessage(message)).catch(() => {});
+}
+function updateConnectionStatus() {
+  const el = $("connection-status");
+  if (el) { el.textContent = navigator.onLine ? "Online" : "Offline"; el.classList.toggle("is-offline", !navigator.onLine); }
+}
+
 
 /* ---------- Tiers de nota (0–100) ---------- */
 const TIERS = [
@@ -311,7 +356,7 @@ async function openTmdbPreview(id, mediaType){
   const existing=(type==="movie"?movies:shows).find(x=>String(x.id)===String(id));
   if(existing) return openItem(id,type);
   try {
-    const r = await fetch(`${TMDB_WORKER_URL}/api/tmdb/${mediaType}/${id}`, { signal: AbortSignal.timeout(15000) });
+    const r = await fetchTmdbJson(`/api/tmdb/${mediaType}/${id}`, { signal: AbortSignal.timeout(15000) });
     if (!r.ok) throw new Error("Não foi possível carregar os detalhes. Tente novamente.");
     const d = await r.json();
     await openItem(id, type, d);
@@ -399,7 +444,7 @@ async function resolveShowEpisodeRuntimes(item,seasonNumbers=[]){
       const episodeRuntimes=new Map();
       let detailStatus="não consultado";
       try{
-        const detailResponse=await fetch(`${TMDB_WORKER_URL}/api/tmdb/tv/${encodeURIComponent(id)}`,{signal:AbortSignal.timeout(12000)});
+        const detailResponse=await fetchTmdbJson(`/api/tmdb/tv/${encodeURIComponent(id)}`,{signal:AbortSignal.timeout(12000)});
         detailStatus=String(detailResponse.status);
         if(detailResponse.ok){
           const detail=await detailResponse.json();
@@ -412,7 +457,7 @@ async function resolveShowEpisodeRuntimes(item,seasonNumbers=[]){
       // Prioriza a duração individual dos episódios; usa a média da série como fallback.
       const seasonResponses=await Promise.all(seasons.map(async number=>{
         try{
-          const response=await fetch(`${TMDB_WORKER_URL}/api/tmdb/tv/${encodeURIComponent(id)}/season/${number}`,{signal:AbortSignal.timeout(12000)});
+          const response=await fetchTmdbJson(`/api/tmdb/tv/${encodeURIComponent(id)}/season/${number}`,{signal:AbortSignal.timeout(12000)});
           if(!response.ok){
             console.warn(`[NEXUS tempo] Série ${id}, temporada ${number}: HTTP ${response.status}`);
             return {number,payload:null};
@@ -608,7 +653,7 @@ async function openItem(id, type, previewData = null) {
   if (!previewData && (!item.cast?.length || !item.genres?.length)) {
     try {
       const mediaType = isShow ? "tv" : "movie";
-      const response = await fetch(`${TMDB_WORKER_URL}/api/tmdb/${mediaType}/${encodeURIComponent(id)}`, {
+      const response = await fetchTmdbJson(`/api/tmdb/${mediaType}/${encodeURIComponent(id)}`, {
         signal: AbortSignal.timeout(12000)
       });
       if (response.ok) {
@@ -868,16 +913,24 @@ async function loadSeriesSeasons(showId, savedNote, selectedJourneyId = "") {
   try {
     let seasonsData = showSeasonsCache.get(showId);
     if (!seasonsData) {
-      const response = await fetch(`${TMDB_WORKER_URL}/api/tmdb/tv/${encodeURIComponent(showId)}`);
+      const savedSeasons = await readTmdbCache(`seasons:${showId}`);
+      if (savedSeasons?.data) seasonsData = savedSeasons.data;
+    }
+    if (!seasonsData) {
+      const response = await fetchTmdbJson(`/api/tmdb/tv/${encodeURIComponent(showId)}`);
       if (!response.ok) throw new Error(`TMDB respondeu com HTTP ${response.status}`);
       const detail = await response.json();
       seasonsData = await Promise.all((detail.seasons || []).map(async season => {
-        const result = await fetch(`${TMDB_WORKER_URL}/api/tmdb/tv/${encodeURIComponent(showId)}/season/${season.seasonNumber}`);
+        const result = await fetchTmdbJson(`/api/tmdb/tv/${encodeURIComponent(showId)}/season/${season.seasonNumber}`);
         if (!result.ok) throw new Error(`Não foi possível carregar a temporada ${season.seasonNumber}.`);
         const data = await result.json();
         return { number: data.seasonNumber, name: data.name, episode_count: data.episodes?.length || season.episodeCount || 0,
           episodes: (data.episodes || []).map(ep => ({ number: ep.number, name: ep.name, overview: ep.overview, stillUrl: ep.stillUrl, runtime: ep.runtime ?? null })) };
       }));
+      await writeTmdbCache(`seasons:${showId}`, seasonsData);
+      warmTmdbImages(seasonsData.flatMap(season => [season.posterUrl, ...(season.episodes || []).map(ep => ep.stillUrl)]));
+      showSeasonsCache.set(showId, seasonsData);
+    } else {
       showSeasonsCache.set(showId, seasonsData);
     }
     if (!seasonsData?.length) {
@@ -1543,8 +1596,11 @@ async function loadCatalog() {
     movies = catalog.filter(x => x.type === "movie").map(x => ({ ...x, id: String(x.id), type: "movie", title: x.title || "Sem título", year: x.year || null, status: x.status || "plantowatch", score: Number(x.score || 0), cover: x.posterUrl || x.cover || null, banner: x.backdropUrl || x.banner || null, overview: x.overview || "" }));
     shows = catalog.filter(x => x.type === "show").map(x => ({ ...x, id: String(x.id), type: "show", title: x.title || "Sem título", year: x.year || null, status: x.status || "plantowatch", score: Number(x.score || 0), cover: x.posterUrl || x.cover || null, banner: x.backdropUrl || x.banner || null, overview: x.overview || "", eps: x.numberOfEpisodes || 0 }));
     watching = [...movies, ...shows].filter(i => i.status === "watching");
+    warmTmdbImages([...movies, ...shows].flatMap(item => [item.cover, item.banner]));
     populateYears(); renderHero(); render();
-    statusEl.textContent = `Biblioteca carregada · ${movies.length} filmes, ${shows.length} séries`;
+    statusEl.textContent = navigator.onLine
+      ? `Biblioteca carregada · ${movies.length} filmes, ${shows.length} séries`
+      : `Biblioteca local · ${movies.length} filmes, ${shows.length} séries · Offline`;
   } catch (error) {
     console.error("Falha ao carregar biblioteca:", error);
     statusEl.textContent = `Não foi possível carregar sua biblioteca: ${esc(error.message)}`;
@@ -1577,7 +1633,7 @@ document.addEventListener("click",async e=>{
     page: searchPage
   };
   try {
-    const r=await fetch(`${TMDB_WORKER_URL}/api/tmdb/${mediaType}/${id}`);
+    const r=await fetchTmdbJson(`/api/tmdb/${mediaType}/${id}`);
     if(!r.ok)throw new Error("Não foi possível carregar os detalhes do título.");
     const detail=await r.json();
     const selectedStatus=button.dataset.addStatus || "plantowatch";
@@ -1611,6 +1667,24 @@ $("btn-login").addEventListener("click", () => {
   (fbUser ? hubFB.logout() : hubFB.login()).catch(err => alert("Não foi possível entrar: " + (err.code || err.message)));
 });
 init();
+
+/* Conectividade, sincronização manual e instalação PWA. */
+window.addEventListener("online", () => { updateConnectionStatus(); if (fbUser && window.hubFB) loadCatalog(); });
+window.addEventListener("offline", updateConnectionStatus);
+updateConnectionStatus();
+$("btn-sync-now")?.addEventListener("click", async () => {
+  const button = $("btn-sync-now"), status = $("sync-status");
+  if (!fbUser || !window.hubFB) { status.textContent = "Entre com a conta proprietária para sincronizar."; return; }
+  if (!navigator.onLine) { status.textContent = "Você está offline. As alterações serão sincronizadas automaticamente quando a conexão voltar."; return; }
+  button.disabled = true; button.textContent = "Sincronizando…";
+  try { await hubFB.syncNow(); await loadCatalog(); status.textContent = "Sincronização concluída."; }
+  catch (error) { status.textContent = `Não foi possível sincronizar: ${error.message || error.code}`; }
+  finally { button.disabled = false; button.textContent = "Sincronizar"; }
+});
+let deferredInstallPrompt = null;
+window.addEventListener("beforeinstallprompt", event => { event.preventDefault(); deferredInstallPrompt = event; const button = $("btn-install-pwa"); if (button) button.hidden = false; });
+$("btn-install-pwa")?.addEventListener("click", async () => { if (!deferredInstallPrompt) return; deferredInstallPrompt.prompt(); await deferredInstallPrompt.userChoice; deferredInstallPrompt = null; $("btn-install-pwa").hidden = true; });
+window.addEventListener("appinstalled", () => { const button = $("btn-install-pwa"); if (button) button.hidden = true; });
 
 /* =====================================================================
    HELPERS

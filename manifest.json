@@ -1,0 +1,16 @@
+{
+  "id": "./",
+  "name": "NEXUS — Filmes & Séries",
+  "short_name": "NEXUS",
+  "description": "Sua biblioteca pessoal de filmes e séries.",
+  "lang": "pt-BR",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#171613",
+  "theme_color": "#171613",
+  "orientation": "portrait-primary",
+  "icons": [
+    { "src": "assets/nexus-filmes-series.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}
