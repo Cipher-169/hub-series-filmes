@@ -2732,3 +2732,110 @@ body.discover-mode .top { padding-top:14px; padding-bottom:14px; }
 .offline-action-btn:hover { border-color:var(--gold); background:rgba(208,173,120,.15); }
 .offline-action-btn:disabled { opacity:.55; cursor:wait; }
 @media(max-width:600px) { .offline-toolbar { align-items:flex-start; } .offline-actions { width:100%; } }
+
+/* ============================================================
+   NEXUS MOBILE REFINEMENT — navegação e layouts para Android
+   Escopo exclusivo para telas pequenas; desktop preservado.
+   ============================================================ */
+@media (max-width: 640px) {
+  html, body { width:100%; max-width:100%; overflow-x:hidden; }
+  body { padding-bottom:calc(76px + env(safe-area-inset-bottom)); }
+  img, video, canvas, iframe { max-width:100%; }
+  .wrap { width:100%; max-width:100%; padding:0 16px 30px; }
+
+  /* Cabeçalho mais compacto e sem navegação espremida */
+  .hero { min-height:470px; background-position:center 34%; }
+  .top { position:absolute; top:0; left:0; right:0; display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:10px; padding:16px 17px; }
+  .brand { min-width:0; gap:5px; flex-wrap:nowrap; }
+  .brand-name { font-size:1.12rem; letter-spacing:.13em; }
+  .brand-divider { font-size:.9rem; }
+  .brand-hub { font-size:.54rem; letter-spacing:.065em; white-space:nowrap; }
+  .project-version { padding:3px 6px; margin-left:3px; font-size:.61rem; }
+  .who { justify-self:end; }
+  .who button, #btn-login { padding:7px 10px; font-size:.7rem; }
+  .quick-links { grid-column:1/-1; order:initial; width:100%; min-width:0; display:flex; justify-content:space-between; gap:4px; overflow:visible; padding:5px 0 0; }
+  .quick-links button { min-width:0; padding:7px 5px; gap:4px; font-size:.65rem; }
+  .quick-links button span { font-size:1rem; }
+  .hero-in { width:100%; max-width:none; padding:0 19px 34px; }
+  .hero-in h1 { max-width:100%; font-size:clamp(2.25rem,10vw,3.4rem); line-height:1.02; overflow-wrap:anywhere; }
+  .hero-in p { font-size:.72rem; line-height:1.5; }
+
+  /* Informações de conta e sincronização */
+  .offline-toolbar { display:flex; flex-direction:column; align-items:flex-start; gap:8px; margin:13px 0 8px; }
+  .offline-toolbar .sync-status { margin:0; font-size:.76rem; }
+  .offline-actions { width:100%; display:flex; align-items:center; flex-wrap:wrap; gap:8px; }
+  .offline-action-btn { min-height:38px; padding:8px 12px; font-size:.72rem; }
+  #me { overflow-wrap:anywhere; word-break:break-word; line-height:1.55; font-size:.75rem; }
+
+  /* Abas principais tornam-se barra inferior fixa */
+  .tabs { position:fixed; z-index:1000; left:0; right:0; bottom:0; top:auto; width:100%; display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:0; margin:0; padding:7px 5px calc(7px + env(safe-area-inset-bottom)); border:0; border-top:1px solid rgba(220,198,160,.2); background:rgba(23,22,19,.97); box-shadow:0 -8px 28px rgba(0,0,0,.28); backdrop-filter:blur(18px); }
+  .tabs button { min-width:0; padding:7px 2px 6px; border-radius:8px; color:#a99f90; font-size:.55rem; line-height:1.2; letter-spacing:.025em; white-space:normal; text-align:center; }
+  .tabs button[aria-selected=true] { color:#f1d5a4; background:rgba(208,173,120,.09); }
+  .tabs button[aria-selected=true]::after { left:28%; right:28%; bottom:-7px; height:2px; background:var(--gold); }
+
+  /* Filtros e coleções */
+  .bar { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:9px; margin:0 0 22px; padding:12px 0 15px; }
+  .bar input { grid-column:1/-1; width:100%; min-width:0; }
+  .bar select { width:100%; min-width:0; }
+  .grid { grid-template-columns:repeat(2,minmax(0,1fr)) !important; gap:16px 12px !important; }
+  .grid > * { min-width:0; }
+  .poster { border-radius:8px; }
+  .poster .cap { padding:9px; font-size:.78rem; }
+
+  /* Cartões e painéis não podem impor largura mínima */
+  #view, #view > *, .journey-panel, .journey-list, .journey-card,
+  .diary-form, .diary-entry, .season-block, .stats-panel { min-width:0; max-width:100%; }
+  .journey-panel { padding:14px 12px; margin-bottom:18px; overflow:hidden; }
+  .journey-panel-head { display:grid; grid-template-columns:minmax(0,1fr); gap:12px; }
+  .journey-panel-head > div { min-width:0; }
+  .journey-panel-head > button { width:100%; justify-self:stretch; min-height:44px; white-space:normal; }
+  .journey-notice { overflow-wrap:anywhere; }
+  .journey-card { padding:14px 12px; overflow:hidden; }
+  .journey-card .diary-entry-head { display:flex; flex-direction:column; align-items:flex-start; gap:5px; min-width:0; }
+  .journey-card .diary-entry-head strong { overflow-wrap:anywhere; }
+  .journey-card > small { display:block; line-height:1.55; overflow-wrap:anywhere; }
+  .journey-card-meta { gap:7px; font-size:.78rem; }
+  .journey-card .diary-actions { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; width:100%; margin-top:13px; }
+  .journey-card .diary-actions button { width:100%; min-width:0; min-height:44px; padding:9px 8px; border-radius:12px; font-size:.78rem; line-height:1.3; white-space:normal; overflow-wrap:anywhere; }
+  .journey-inline-form { min-width:0; padding:12px; }
+  .journey-edit-grid { grid-template-columns:minmax(0,1fr); gap:12px; }
+  .journey-edit-wide { grid-column:auto; }
+  .journey-edit-footer { display:grid; grid-template-columns:1fr; }
+  .journey-edit-footer button { width:100%; min-height:43px; }
+
+  /* Detalhes do título em tela quase cheia */
+  dialog#dlg { width:100vw; max-width:100vw; height:100dvh; max-height:100dvh; margin:0; padding:0; border-radius:0; border-left:0; border-right:0; overflow-y:auto; overscroll-behavior:contain; }
+  dialog#dlg .dh { min-height:190px; padding:18px 17px 22px; background-position:center 28%; }
+  dialog#dlg .dh h2 { max-width:100%; font-size:clamp(1.8rem,8vw,2.6rem); overflow-wrap:anywhere; }
+  dialog#dlg .db { padding:13px 16px calc(28px + env(safe-area-inset-bottom)); }
+  .detail-tabs { display:flex; width:100%; max-width:100%; gap:5px; overflow-x:auto; overscroll-behavior-x:contain; padding:0 0 10px; scrollbar-width:none; }
+  .detail-tabs::-webkit-scrollbar { display:none; }
+  .detail-tabs button { flex:0 0 auto; padding:9px 11px; font-size:.73rem; white-space:nowrap; }
+  .detail-facts { grid-template-columns:repeat(2,minmax(0,1fr)) !important; gap:9px; }
+  .detail-facts > * { min-width:0; overflow-wrap:anywhere; }
+  .score-box-primary { display:flex; flex-wrap:wrap; gap:10px; }
+  .score-box-primary .score-number { width:min(100%,180px); min-width:0; }
+  .score-box-primary button { min-height:42px; }
+  .diary-form { padding:13px; }
+  .diary-form input, .diary-form select, .diary-form textarea { max-width:100%; min-width:0; }
+  .diary-form .diary-episode-fields { grid-template-columns:minmax(0,1fr) 86px; }
+  .diary-form button[type=submit], .journey-form button[type=submit] { min-height:44px; }
+  .tmdb-credits { padding:20px 16px 10px; gap:12px; }
+  .tmdb-credits img { max-width:70px; }
+}
+
+@media (max-width:380px) {
+  .wrap { padding-left:12px; padding-right:12px; }
+  .top { padding-left:13px; padding-right:13px; }
+  .brand-name { font-size:1rem; }
+  .brand-hub { font-size:.49rem; }
+  .project-version { font-size:.55rem; }
+  .quick-links button { font-size:.59rem; }
+  .grid { gap:13px 9px !important; }
+  .journey-card .diary-actions { grid-template-columns:1fr 1fr; }
+  .detail-facts { grid-template-columns:1fr !important; }
+}
+@media (max-width:640px) {
+  .tabs button.hidden { display:none !important; }
+  .tabs:not(:has(#stats-tab:not(.hidden))) { grid-template-columns:repeat(4,minmax(0,1fr)); }
+}
